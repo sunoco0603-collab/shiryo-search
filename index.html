@@ -1517,16 +1517,47 @@ function snPdfClear(){ return snTx("readwrite", function(st){ st.clear(); return
 function snRefreshPdfSet(){
   return snPdfAll().then(function(list){
     SN_PDF_SET = {};
-    (list || []).forEach(function(r){ SN_PDF_SET[r.file] = r.size || 0; });
+    (list || []).forEach(function(r){ SN_PDF_SET[snNormName(r.file)] = r.size || 0; });
     return list || [];
   }).catch(function(){ SN_PDF_SET = {}; return []; });
 }
-function snHasPdf(file){ return !!(SN_PDF_SET && SN_PDF_SET[file] !== undefined); }
+function snHasPdf(file){ return !!(SN_PDF_SET && SN_PDF_SET[snNormName(file)] !== undefined); }
+
+/** 表記ゆれがあっても保存済みレコードを見つけて取り出す */
+function snPdfGetLoose(file){
+  return snPdfGet(file).then(function(rec){
+    if (rec) return rec;
+    var n = snNormName(file);
+    if (n !== file) {
+      return snPdfGet(n).then(function(rec2){
+        if (rec2) return rec2;
+        return snPdfAll().then(function(all){
+          return (all || []).filter(function(r){ return snNormName(r.file) === n; })[0] || null;
+        });
+      });
+    }
+    return snPdfAll().then(function(all){
+      return (all || []).filter(function(r){ return snNormName(r.file) === n; })[0] || null;
+    });
+  });
+}
+
+/**
+ * ファイル名の表記をそろえる（純粋な関数。selfTest対象）
+ * iOS/macOS は「グ」を「ク」＋「゛」のように分解して保持するため、
+ * Windows 側で作った目録（結合形）とそのままでは一致しない。NFC に揃えて比較する。
+ */
+function snNormName(name){
+  var s = String(name == null ? "" : name);
+  try { s = s.normalize("NFC"); } catch (e) {}
+  return s;
+}
 
 /** 目録に載っているファイル名か（載っていないPDFは取り込んでも使い道がない） */
 function snKnownPdfName(name){
   var books = (window.DB_META && window.DB_META.books) || [];
-  for (var i = 0; i < books.length; i++) if (books[i].file === name) return true;
+  var n = snNormName(name);
+  for (var i = 0; i < books.length; i++) if (snNormName(books[i].file) === n) return true;
   return false;
 }
 
@@ -1553,9 +1584,11 @@ function snImportPdfs(files, onProgress){
     if (onProgress) onProgress(i, list.length, f.name);
     if (!snIsPdfName(f.name)) { notPdf.push(f.name); return step(); }
     if (!snKnownPdfName(f.name)) { unknown.push(f.name); return step(); }
-    return snPdfPut({ file: f.name, blob: f, size: f.size, importedAt: new Date().toISOString() })
+    if (!f.size) { failed.push(f.name + "（中身が空。iCloudからのダウンロードが終わっていない可能性）"); return step(); }
+    // 目録と同じ表記で保存する。こうしないと資料側のリンクから引けなくなる。
+    return snPdfPut({ file: snNormName(f.name), blob: f, size: f.size, importedAt: new Date().toISOString() })
       .then(function(){ added++; return step(); })
-      .catch(function(){ failed.push(f.name); return step(); });
+      .catch(function(e){ failed.push(f.name + "（" + (e && e.message ? e.message : "保存できず") + "）"); return step(); });
   }
   return step().then(function(r){ return snRefreshPdfSet().then(function(){ return r; }); });
 }
@@ -1603,7 +1636,7 @@ function snOpenPdf(file, page){
   snEl("pvMsg").style.display = "";
   SN_VIEW.file = file;
 
-  Promise.all([snLoadPdfjs(), snPdfGet(file)]).then(function(a){
+  Promise.all([snLoadPdfjs(), snPdfGetLoose(file)]).then(function(a){
     var lib = a[0], rec = a[1];
     if (!rec || !rec.blob) throw new Error("この資料のPDFはまだ取り込まれていません");
     return rec.blob.arrayBuffer().then(function(buf){
@@ -1933,11 +1966,16 @@ function snRenderPdfBox(){
     snPdfClear().then(snRefreshPdfSet).then(snRenderPdfList);
   };
   snEl("snPdfFile").onchange = function(){
-    var files = this.files;
+    // input.value を空にすると選択リストごと空になる環境（Safari）があるため、
+    // 必ず先に配列へ写し取ってから入力欄を初期化する。
+    var files = Array.prototype.slice.call(this.files || []);
     this.value = "";
-    if (!files || !files.length) return;
     var msg = snEl("snPdfMsg");
-    msg.textContent = "取り込んでいます…";
+    if (!files.length) {
+      msg.textContent = "ファイルが選ばれませんでした。もう一度お試しください。";
+      return;
+    }
+    msg.textContent = files.length + " 件を取り込んでいます…";
     snImportPdfs(files, function(i, n, name){
       msg.textContent = "取り込んでいます… " + i + " / " + n + "　" + name;
     }).then(function(r){
@@ -2039,6 +2077,14 @@ function snSelfTest(){
       var books = (window.DB_META && window.DB_META.books) || [];
       if (!books.length) return snKnownPdfName("存在しない.pdf") === false;
       return snKnownPdfName(books[0].file) === true && snKnownPdfName("存在しない.pdf") === false;
+    })());
+  t("PDF: iOS式の分解された濁点でも目録と一致する", (function(){
+      // 「グ」= U+30B0（結合形）と、「ク」+「゛」= U+30AF U+3099（分解形）
+      // 見た目が同じでソース上区別できないため、文字コードで明示的に作る
+      var nfc = String.fromCharCode(0x30B0);   // グ（結合形）
+      var nfd = String.fromCharCode(0x30AF, 0x3099);   // ク＋゛（分解形）
+      return nfc !== nfd && snNormName(nfd) === nfc &&
+             snNormName("楕円積分" + nfd + ".pdf") === ("楕円積分" + nfc + ".pdf");
     })());
   t("PDF: 名前でPDFかどうかを見分ける",
     snIsPdfName("a.pdf") && snIsPdfName("大文字.PDF") && !snIsPdfName("a.txt") && !snIsPdfName("pdf") && !snIsPdfName(""));
