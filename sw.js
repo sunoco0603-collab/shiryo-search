@@ -10,7 +10,7 @@
  *
  * アプリを更新したら CACHE の数字を1つ増やすこと。
  */
-var CACHE = "shiryo-navi-v4";
+var CACHE = "shiryo-navi-v5";
 var SHELL = "./index.html";
 var ASSETS = [
   "./",

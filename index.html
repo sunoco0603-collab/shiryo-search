@@ -1450,6 +1450,13 @@ var SN_BUNDLE_FORMAT = "shiryo-navi-bundle";
 /* PDF.js（数式や図をそのまま見るための表示ライブラリ。sw.js が保存するのでオフラインでも動く） */
 var SN_PDFJS     = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js";
 var SN_PDFJS_WRK = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+/*
+ * 日本語フォントの対応表と標準フォント。
+ * 埋め込みが不完全なPDF（スキャンでない教科書に多い）はこれが無いと日本語だけ描かれない。
+ * 使うぶんだけ読み込まれ、sw.js が保存するので2回目以降はオフラインでも出る。
+ */
+var SN_PDFJS_CMAPS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/";
+var SN_PDFJS_FONTS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/";
 
 function snEl(id){ return document.getElementById(id); }
 function snEsc(s){
@@ -1640,7 +1647,12 @@ function snOpenPdf(file, page){
     var lib = a[0], rec = a[1];
     if (!rec || !rec.blob) throw new Error("この資料のPDFはまだ取り込まれていません");
     return rec.blob.arrayBuffer().then(function(buf){
-      return lib.getDocument({ data: buf }).promise;
+      return lib.getDocument({
+        data: buf,
+        cMapUrl: SN_PDFJS_CMAPS,               // 日本語の文字コード対応表
+        cMapPacked: true,
+        standardFontDataUrl: SN_PDFJS_FONTS    // 埋め込みの無いフォントの代替
+      }).promise;
     });
   }).then(function(doc){
     SN_VIEW.doc = doc;
@@ -2086,6 +2098,8 @@ function snSelfTest(){
       return nfc !== nfd && snNormName(nfd) === nfc &&
              snNormName("楕円積分" + nfd + ".pdf") === ("楕円積分" + nfc + ".pdf");
     })());
+  t("PDF: 日本語フォント対応表の場所が設定されている",
+    /\/cmaps\/$/.test(SN_PDFJS_CMAPS) && /\/standard_fonts\/$/.test(SN_PDFJS_FONTS));
   t("PDF: 名前でPDFかどうかを見分ける",
     snIsPdfName("a.pdf") && snIsPdfName("大文字.PDF") && !snIsPdfName("a.txt") && !snIsPdfName("pdf") && !snIsPdfName(""));
   t("PDF: 選択欄に種類の制限をかけていない", (function(){
@@ -2130,6 +2144,8 @@ window.snPdfGet = snPdfGet;
 window.snHasPdf = snHasPdf;
 window.snRefreshPdfSet = snRefreshPdfSet;
 window.SN_VIEW = SN_VIEW;
+window.SN_PDFJS_CMAPS = SN_PDFJS_CMAPS;
+window.SN_PDFJS_FONTS = SN_PDFJS_FONTS;
 </script>
 </body>
 </html>
