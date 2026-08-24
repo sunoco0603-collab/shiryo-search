@@ -1,0 +1,1713 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>資料検索・本棚 — 大学数学・物理</title>
+<meta name="description" content="大学数学・物理の資料を横断検索する個人用の書棚">
+<meta name="theme-color" content="#2563eb">
+<!-- ホーム画面に追加したときにアプリとして開くための指定（スマホ用。PCでファイルを直接開く場合は無視される） -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png" type="image/png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="資料検索">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" onload="onKatexLoaded()"></script>
+<style>
+/* ===== スマホ用（ホーム画面から起動すると全画面になるため、時計やホームバーを避ける） ===== */
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+header { padding-top: env(safe-area-inset-top); }
+main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+
+/* ===== 資料データの取り込み画面 ===== */
+#dataGate {
+  position: fixed; inset: 0; z-index: 900; display: none;
+  align-items: flex-start; justify-content: center; overflow-y: auto;
+  background: rgba(16,18,22,.72);
+  padding: calc(24px + env(safe-area-inset-top)) 12px calc(40px + env(safe-area-inset-bottom));
+}
+#dataGate.on { display: flex; }
+#dataGate .sheet {
+  background: #fff; color: #1c1e21; border-radius: 16px; padding: 20px;
+  width: 100%; max-width: 520px; box-shadow: 0 24px 60px rgba(0,0,0,.4); line-height: 1.7;
+}
+#dataGate h2 { margin: 0 0 10px; font-size: 1.1rem; }
+#dataGate p { margin: 0 0 10px; font-size: .92rem; }
+#dataGate ol { margin: 0 0 12px 1.2em; padding: 0; font-size: .9rem; }
+#dataGate .gbtn {
+  appearance: none; border: 1px solid #2563eb; background: #2563eb; color: #fff;
+  border-radius: 10px; padding: 12px 18px; font-size: .95rem; font-family: inherit;
+  cursor: pointer; min-height: 46px; width: 100%;
+}
+#dataGate .gbtn.sub { background: #fff; color: #2563eb; margin-top: 8px; }
+#dataGate .gbtn[disabled] { opacity: .55; cursor: default; }
+#dataGate .bar { height: 8px; background: #e3e5e8; border-radius: 999px; overflow: hidden; margin: 10px 0 4px; }
+#dataGate .bar > i { display: block; height: 100%; width: 0%; background: #2563eb; transition: width .2s; }
+#dataGate .msg { font-size: .85rem; color: #6b7280; min-height: 1.4em; }
+#dataGate .err { color: #dc2626; font-weight: 700; }
+.datanote { font-size: .85rem; color: #6b7280; margin: 6px 0 0; }
+
+:root {
+  --bg:#f7f7f9; --panel:#ffffff; --ink:#1c1e21; --sub:#6b7280; --line:#e3e5e8;
+  --acc:#2563eb; --acc-ink:#ffffff; --mark:#fde68a; --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
+  --paper:#fffdf8; --paper-ink:#241f1a;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#16181d; --panel:#1f2229; --ink:#e5e7eb; --sub:#9ca3af; --line:#33363d;
+          --acc:#3b82f6; --acc-ink:#ffffff; --mark:#785f10; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+          --paper:#242830; --paper-ink:#e8e6e1; }
+}
+* { box-sizing:border-box; }
+body { margin:0; font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif; background:var(--bg); color:var(--ink); }
+header { padding:14px 20px 0; border-bottom:1px solid var(--line); background:var(--panel); }
+header h1 { margin:0 0 10px; font-size:1.15rem; }
+header h1 small { color:var(--sub); font-weight:normal; margin-left:10px; font-size:.75rem; }
+nav { display:flex; gap:4px; flex-wrap:wrap; }
+nav button { border:none; background:none; color:var(--sub); padding:8px 14px; font-size:.95rem; cursor:pointer; border-bottom:2px solid transparent; }
+nav button.on { color:var(--acc); border-bottom-color:var(--acc); font-weight:bold; }
+main { max-width:1100px; margin:0 auto; padding:16px 20px 60px; }
+.tab { display:none; } .tab.on { display:block; }
+.searchbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px; }
+.searchbar input[type=text] { flex:1; min-width:240px; padding:9px 12px; font-size:1rem; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); }
+.searchbar select { padding:8px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); }
+.searchbar button { padding:9px 18px; font-size:1rem; border:none; border-radius:8px; background:var(--acc); color:var(--acc-ink); cursor:pointer; }
+.opts { color:var(--sub); font-size:.85rem; margin-bottom:12px; }
+#status { color:var(--sub); font-size:.85rem; margin:8px 0; }
+.bookhit { background:var(--panel); border:1px solid var(--line); border-radius:10px; margin:12px 0; padding:12px 16px; }
+.bookhit h3 { margin:0 0 2px; font-size:1rem; }
+.bookhit .fld { font-size:.75rem; color:var(--acc); border:1px solid var(--acc); border-radius:99px; padding:1px 8px; margin-right:6px; vertical-align:1px; }
+.bookhit .cnt { color:var(--sub); font-size:.85rem; }
+.mine { font-size:.72rem; background:var(--ok); color:#fff; border-radius:99px; padding:1px 8px; margin-right:6px; }
+.hit { padding:7px 0; border-top:1px dashed var(--line); font-size:.9rem; line-height:1.6; }
+.hit a.pg { color:var(--acc); text-decoration:none; font-weight:bold; margin-right:8px; white-space:nowrap; }
+.hit a.pg:hover { text-decoration:underline; }
+mark { background:var(--mark); color:inherit; border-radius:2px; padding:0 1px; }
+.more { color:var(--acc); cursor:pointer; font-size:.85rem; padding:6px 0 0; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; margin:10px 0; padding:12px 16px; }
+.card h3 { margin:0; font-size:.98rem; }
+.card h3 a { color:var(--ink); text-decoration:none; } .card h3 a:hover { color:var(--acc); }
+.card .meta { color:var(--sub); font-size:.82rem; margin:3px 0 6px; }
+.badge { font-size:.72rem; border-radius:99px; padding:1px 8px; margin-left:8px; vertical-align:1px; }
+.b-full { background:var(--ok); color:#fff; } .b-low { background:var(--warn); color:#fff; }
+.b-none, .b-error, .b-locked { background:var(--bad); color:#fff; }
+.toc { margin:4px 0 0; padding-left:0; list-style:none; font-size:.85rem; }
+.toc li { padding:2px 0; }
+.toc a { color:var(--acc); text-decoration:none; } .toc a:hover { text-decoration:underline; }
+h2.fieldhead { font-size:1rem; color:var(--sub); border-bottom:1px solid var(--line); padding-bottom:4px; margin:26px 0 4px; }
+.note { background:var(--panel); border:1px solid var(--line); border-radius:10px; margin:14px 0; padding:14px 18px; }
+.note h3 { margin:0 0 2px; }
+.note .dt { color:var(--sub); font-size:.78rem; margin-bottom:8px; }
+.note p { line-height:1.75; margin:8px 0; }
+.mth { font-family:"Cambria Math",Consolas,monospace; background:rgba(128,128,128,.12); border-radius:4px; padding:0 4px; }
+.mth.mth-done { background:none; padding:0; font-family:inherit; }
+.note table, .mxtbl { border-collapse:collapse; width:100%; font-size:.88rem; margin:8px 0; }
+.note th, .note td, .mxtbl th, .mxtbl td { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; line-height:1.5; }
+.note th, .mxtbl th { background:rgba(128,128,128,.08); }
+.note a, .mxtbl a { color:var(--acc); }
+#selftest { font-family:Consolas,monospace; font-size:.82rem; white-space:pre-wrap; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 16px; }
+.pass { color:var(--ok); } .fail { color:var(--bad); }
+.stat { color:var(--sub); font-size:.88rem; line-height:1.8; }
+.frm { display:flex; flex-direction:column; gap:9px; margin:10px 0 12px; }
+.frm label { display:flex; flex-direction:column; gap:3px; font-size:.85rem; color:var(--sub); }
+.frm input, .frm select, .frm textarea { padding:8px 10px; font-size:.95rem; font-family:inherit; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
+.btnrow { display:flex; gap:8px; flex-wrap:wrap; }
+.btnrow button { padding:8px 16px; font-size:.92rem; border:none; border-radius:8px; background:var(--acc); color:var(--acc-ink); cursor:pointer; }
+.btnrow button.sec { background:none; border:1px solid var(--acc); color:var(--acc); }
+.prev { white-space:pre-wrap; font-family:Consolas,monospace; font-size:.8rem; background:var(--bg); border:1px dashed var(--line); border-radius:8px; padding:10px 12px; margin:8px 0 0; line-height:1.65; max-height:60vh; overflow:auto; }
+.reqitem { display:flex; gap:10px; align-items:flex-start; justify-content:space-between; }
+.reqitem .del { color:var(--bad); cursor:pointer; font-size:.8rem; border:none; background:none; padding:2px 6px; }
+.st-done { background:var(--ok); color:#fff; } .st-wait { background:var(--warn); color:#fff; }
+.toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:9px 20px; border-radius:99px; font-size:.9rem; opacity:0; transition:opacity .2s; pointer-events:none; z-index:50; }
+.toast.on { opacity:.95; }
+.linkbtn { background:none; border:none; color:var(--acc); cursor:pointer; font-size:.85rem; padding:0 0 0 10px; text-decoration:underline; }
+details.card, details.note { padding:0; }
+details.fieldcard { background:none; border:none; margin:14px 0 0; }
+details.fieldcard > summary { padding:10px 4px; border-bottom:2px solid var(--acc); border-radius:0; }
+details.fieldcard > summary h3 { font-size:1.08rem; color:var(--acc); }
+details.fieldcard > summary .lead { color:var(--sub); }
+details.fieldcard > .grp { padding:2px 0 4px 14px; }
+.attach { margin:10px 0 2px; }
+.attach .ttl { font-size:.82rem; color:var(--sub); margin-bottom:3px; }
+.attach a { display:inline-block; font-size:.86rem; color:var(--acc); text-decoration:none; border:1px solid var(--acc); border-radius:99px; padding:2px 12px; margin:2px 6px 2px 0; }
+.attach a:hover { background:var(--acc); color:var(--acc-ink); }
+details > summary { list-style:none; cursor:pointer; padding:12px 16px; display:flex; gap:8px; align-items:baseline; }
+details > summary::-webkit-details-marker { display:none; }
+details > summary::before { content:"▶"; color:var(--sub); font-size:.7rem; flex:none; transition:transform .15s; }
+details[open] > summary::before { transform:rotate(90deg); }
+details > summary:hover { background:rgba(128,128,128,.06); border-radius:10px; }
+details > summary h3 { margin:0; font-size:1rem; flex:1; }
+details .body { padding:0 16px 14px 32px; }
+details.note > summary h3 { font-size:1.05rem; }
+summary .lead { display:block; color:var(--sub); font-size:.83rem; font-weight:normal; margin-top:3px; line-height:1.5;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.toolbar { display:flex; gap:8px; align-items:center; margin:4px 0 10px; flex-wrap:wrap; }
+.toolbar button { padding:5px 12px; font-size:.82rem; border:1px solid var(--line); border-radius:99px; background:var(--panel); color:var(--sub); cursor:pointer; }
+.toolbar button:hover { color:var(--acc); border-color:var(--acc); }
+.toolbar select { padding:5px 10px; font-size:.82rem; border:1px solid var(--line); border-radius:99px; background:var(--panel); color:var(--ink); }
+.sec-h { font-size:1rem; margin:22px 0 8px; padding-bottom:4px; border-bottom:2px solid var(--acc); display:inline-block; }
+.note .body > p { line-height:1.85; margin:10px 0; }
+.mthd { display:block; overflow-x:auto; overflow-y:hidden; padding:10px 0; margin:6px 0; text-align:center; }
+.mthd:not(.mth-done) { font-family:"Cambria Math",Consolas,monospace; background:rgba(128,128,128,.10); border-radius:6px; text-align:left; padding:10px 12px; }
+.kbox { border-left:3px solid var(--acc); background:rgba(128,128,128,.07); border-radius:0 8px 8px 0; padding:9px 14px; margin:14px 0; }
+.kbox > b { color:var(--acc); font-size:.85rem; display:block; margin-bottom:4px; }
+.kbox p { margin:5px 0; line-height:1.75; font-size:.93rem; }
+.note ul.pts { margin:8px 0; padding-left:22px; line-height:1.8; }
+.note ul.pts li { margin:4px 0; }
+
+/* ── 本棚（表紙グリッド・学術書風ミニマル）── */
+.shelf-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(148px,1fr)); gap:16px; margin:12px 0; }
+details.shelffield > .grp { padding:2px 0 10px 6px; }
+.fdot { display:inline-block; width:9px; height:9px; border-radius:99px; margin-right:8px; vertical-align:1px; }
+.cover { aspect-ratio:1/1.414; background:var(--paper); color:var(--paper-ink); border:1px solid var(--line);
+  border-radius:3px; padding:7px; cursor:pointer; position:relative; box-shadow:0 1px 3px rgba(0,0,0,.13); transition:transform .12s, box-shadow .12s; }
+.cover:hover { transform:translateY(-3px); box-shadow:0 6px 14px rgba(0,0,0,.18); }
+.cover.on { outline:2px solid var(--acc); outline-offset:2px; }
+.cover-in { height:100%; border:1px solid var(--cf,#888); border-radius:1px; padding:12px 9px 9px;
+  display:flex; flex-direction:column; align-items:center; text-align:center; overflow:hidden; }
+.cover-field { font-size:.6rem; color:var(--cf,#888); letter-spacing:.16em; margin-bottom:5px; white-space:nowrap; }
+.cover-rule { width:56%; border-top:1px solid var(--cf,#888); opacity:.5; margin-bottom:11px; }
+.cover-title { font-family:"Yu Mincho","Hiragino Mincho ProN",serif; font-size:.9rem; font-weight:600; line-height:1.4; }
+.cover-sub { font-size:.62rem; color:var(--sub); margin-top:6px; line-height:1.45; }
+.cover-foot { margin-top:auto; font-size:.58rem; color:var(--sub); letter-spacing:.04em; }
+.cover-kind { position:absolute; top:-6px; right:-6px; font-size:.6rem; padding:1px 7px; border-radius:99px; color:#fff; }
+.k-note { background:var(--acc); } .k-solution { background:var(--ok); }
+.k-print { background:var(--warn); } .k-catalog { background:var(--sub); }
+.cover-wip { position:absolute; left:50%; bottom:14%; transform:translateX(-50%) rotate(-6deg);
+  font-size:.6rem; background:var(--bad); color:#fff; padding:1px 9px; border-radius:3px; white-space:nowrap; }
+#shelfDetail:empty { display:none; }
+#shelfDetail { margin-top:16px; }
+
+/* ── 注文票（2カラム）── */
+.ord-grid { display:grid; grid-template-columns:1fr 350px; gap:20px; align-items:start; }
+.ord-prev { position:sticky; top:14px; }
+@media (max-width:900px){ .ord-grid { grid-template-columns:1fr; } .ord-prev { position:static; } }
+.qstep { margin:0 0 6px; font-size:.95rem; font-weight:bold; }
+.qhint { color:var(--sub); font-size:.82rem; margin:0 0 8px; }
+.qblock { border-top:1px solid var(--line); padding:14px 0 4px; }
+.opt-row { display:flex; flex-wrap:wrap; gap:8px; }
+.opt { border:1px solid var(--line); border-radius:10px; padding:8px 13px; cursor:pointer; font-size:.87rem;
+  background:var(--panel); color:var(--ink); text-align:left; line-height:1.4; }
+.opt:hover { border-color:var(--acc); }
+.opt.on { border-color:var(--acc); background:rgba(37,99,235,.09); font-weight:bold; }
+.opt small { display:block; color:var(--sub); font-weight:normal; font-size:.74rem; margin-top:2px; }
+.patrow { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+.patrow .opt { flex:1 1 150px; }
+
+/* ── 疑問ストック ── */
+.inbox-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; }
+.qcard { border:1px solid var(--line); border-radius:9px; background:var(--panel); padding:8px; font-size:.78rem; }
+.qcard.sel { border-color:var(--acc); background:rgba(37,99,235,.07); }
+.qcard img { width:100%; border-radius:5px; display:block; cursor:zoom-in; background:var(--bg); }
+.qcard .noimg { width:100%; aspect-ratio:4/3; display:flex; align-items:center; justify-content:center;
+  background:var(--bg); border-radius:5px; color:var(--sub); font-size:1.5rem; }
+.qcard .fn { color:var(--sub); margin:5px 0 3px; word-break:break-all; font-size:.72rem; }
+.qcard input[type=text] { width:100%; padding:4px 6px; font-size:.78rem; border:1px solid var(--line);
+  border-radius:5px; background:var(--bg); color:var(--ink); font-family:inherit; }
+.qcard .row { display:flex; gap:5px; align-items:center; margin-top:4px; }
+.exam-note { color:var(--sub); font-size:.8rem; margin:4px 0 14px; }
+.mxtbl td.hit { background:rgba(37,99,235,.12); text-align:center; font-weight:bold; }
+.mxtbl td.topic { font-size:.83rem; }
+.mxtbl th.yr { font-size:.78rem; white-space:nowrap; }
+.rank { font-size:.88rem; line-height:1.9; }
+.rank .n { display:inline-block; min-width:2.2em; color:var(--acc); font-weight:bold; }
+.pat { font-size:.72rem; border:1px solid var(--sub); color:var(--sub); border-radius:4px; padding:0 5px; margin-left:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>資料検索・本棚 <small>横断検索 → 注文票 → 構成案を議論 → 表紙付きPDFで本棚へ</small></h1>
+  <nav id="nav"></nav>
+</header>
+<main>
+  <section id="tab-search" class="tab on">
+    <div class="searchbar">
+      <input type="text" id="q" placeholder="例: オイラーラグランジュ 導出 ／ ネーター ／ トンネル効果" autofocus>
+      <select id="fieldSel"><option value="">全分野</option></select>
+      <button id="go">検索</button>
+    </div>
+    <div class="opts">
+      <label><input type="checkbox" id="useSyn" checked> 同義語も検索</label>
+      <label><input type="checkbox" id="hideMine"> 自作ノートを除く</label>　スペース区切りでAND検索
+    </div>
+    <div id="status"></div>
+    <div id="results"></div>
+  </section>
+
+  <section id="tab-books" class="tab">
+    <div class="toolbar"><button data-all="booklist" data-open="1">すべて開く</button><button data-all="booklist" data-open="">すべて閉じる</button></div>
+    <div id="booklist"></div>
+  </section>
+
+  <section id="tab-shelf" class="tab">
+    <div class="toolbar">
+      <select id="shField"></select>
+      <select id="shKind"></select>
+      <select id="shSort">
+        <option value="updated">更新が新しい順</option>
+        <option value="title">題名順</option>
+        <option value="kind">種別順</option>
+      </select>
+      <button data-all="shelfGrid" data-open="1">すべて開く</button><button data-all="shelfGrid" data-open="">すべて閉じる</button>
+      <span class="stat" id="shCount"></span>
+    </div>
+    <div id="shelfGrid"></div>
+    <div id="shelfDetail"></div>
+  </section>
+
+  <section id="tab-order" class="tab">
+    <details class="card" id="inboxCard">
+      <summary><h3>疑問ストック<span class="lead" id="inboxLead"></span></h3></summary>
+      <div class="body">
+        <p class="stat">スマホで撮った教科書の写真は iCloud の <code>_受信箱</code> に入ります。ここに一覧が出るので、一言メモを添えておき、まとめて注文票に変換できます。<br>
+        一覧が古いときは Claude Code に「受信箱を読み直して」と頼んでください（受信箱スキャン.ps1 を実行します）。</p>
+        <div class="toolbar">
+          <select id="ibFilter">
+            <option value="undone">未処理のみ</option>
+            <option value="all">すべて</option>
+            <option value="image">画像のみ</option>
+            <option value="pdf">PDFのみ</option>
+          </select>
+          <button id="ibOrder">選んだ疑問をまとめて注文する</button>
+          <button id="ibClear">選択を解除</button>
+        </div>
+        <div class="inbox-grid" id="inboxGrid"></div>
+      </div>
+    </details>
+
+    <h2 class="fieldhead">注文票</h2>
+    <div class="patrow" id="patRow"></div>
+    <div class="ord-grid">
+      <div>
+        <div id="ordForm"></div>
+      </div>
+      <div class="ord-prev">
+        <div class="card" style="padding:12px 14px">
+          <h3>依頼書プレビュー</h3>
+          <pre class="prev" id="ordPrev"></pre>
+          <div class="btnrow" style="margin-top:10px">
+            <button id="ordCopy">指示をコピー</button>
+            <button class="sec" id="ordAdd">注文リストに追加</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="fieldhead">注文リスト <span id="reqCount" class="stat"></span>　<button id="reqExport" class="linkbtn">注文書を書き出す</button></h2>
+    <div id="reqList"></div>
+  </section>
+
+  <section id="tab-exam" class="tab">
+    <p class="exam-note">過去問を年度×大問×分野で構造化したものです。○をクリックすると該当ページが開きます。頻出順のまとめプリントはここから注文できます。</p>
+    <div class="toolbar">
+      <select id="exCourse"></select>
+      <button id="exOrder">この科目のまとめプリントを注文する</button>
+    </div>
+    <div id="examBody"></div>
+  </section>
+
+  <section id="tab-info" class="tab">
+    <div class="stat" id="stats"></div>
+    <h2 class="fieldhead">selfTest</h2>
+    <div id="selftest">起動中…</div>
+    <div id="selftest-mobile" style="margin-top:10px"></div>
+  </section>
+</main>
+
+<!-- 資料データの取り込み画面（スマホ用。データが入っていないときだけ出る） -->
+<div id="dataGate" aria-hidden="true">
+  <div class="sheet">
+    <h2 id="gateTitle">資料データを取り込む</h2>
+    <div id="gateBody">
+      <p>この端末にはまだ資料データが入っていません。教科書や講義資料の本文はネット上に置いていないため、
+         PCで書き出したデータファイルを一度だけ取り込む必要があります。</p>
+      <ol>
+        <li>PCで <code>資料検索データ.json</code> を用意する（作り方は手順書に記載）</li>
+        <li>そのファイルをiCloud Driveなどに置き、この端末から取り出せるようにする</li>
+        <li>下のボタンから選ぶ</li>
+      </ol>
+    </div>
+    <input type="file" id="gateFile" accept="application/json,.json" style="display:none">
+    <button class="gbtn" id="gatePick">データファイルを選ぶ</button>
+    <button class="gbtn sub" id="gateClose" style="display:none">閉じる</button>
+    <div class="bar"><i id="gateBar"></i></div>
+    <div class="msg" id="gateMsg"></div>
+  </div>
+</div>
+
+<script src="data/meta.js"></script>
+<script src="data/curated.js"></script>
+<script src="data/notes.js"></script>
+<script src="data/synonyms.js"></script>
+<script src="data/attachments.js"></script>
+<script src="data/shelf.js"></script>
+<script src="data/exams.js"></script>
+<script src="data/inbox.js"></script>
+<script>
+"use strict";
+const META  = (window.DB_META || { generated:"?", books:[] });
+const CUR   = (window.DB_CURATED || { fields:{}, dirFields:{}, toc:[] });
+const NOTES = (window.DB_NOTES || []);
+const SYN   = (window.DB_SYNONYMS || []);
+const ATTACH= (window.DB_ATTACH || {});
+const SHELF = (window.DB_SHELF || []);
+const EXAMS = (window.DB_EXAMS || []);
+const INBOX = (window.DB_INBOX || []);
+
+const SHELF_ROOT = "C:\\Users\\sunoc\\OneDrive\\Desktop\\aiの作業場\\成果物\\資料検索\\本棚\\";
+const PDF_BASE = {
+  "指示書": "file:///C:/Users/sunoc/OneDrive/Desktop/大学教材作成/大学数学・物理指示書/",
+  "問題":   "file:///C:/Users/sunoc/OneDrive/Desktop/大学教材作成/問題/",
+  "教材":   "file:///C:/Users/sunoc/OneDrive/Desktop/大学教材作成/成果物/",
+  "過去問": "file:///C:/Users/sunoc/iCloudDrive/Downloads/物理学科B2/",
+  "本棚":   "file:///C:/Users/sunoc/OneDrive/Desktop/aiの作業場/成果物/資料検索/本棚/"
+};
+const FIELD_ORDER = ["微分積分","線形代数","数学基礎","複素解析","確率統計","確率","物理数学","応用解析第一","電気情報数学基礎",
+  "力学","解析力学","振動と波動","電磁気学","波動","熱力学","量子力学","物理全般","UNIX・Fortran","過去問","その他"];
+const FIELD_HUE = { "解析力学":215, "力学":205, "電磁気学":150, "量子力学":275, "物理数学":30, "振動と波動":190,
+  "応用解析第一":15, "電気情報数学基礎":330, "確率":250, "確率統計":250, "熱力学":10, "微分積分":345, "線形代数":45,
+  "数学基礎":90, "複素解析":300, "波動":190, "物理全般":220, "過去問":0, "その他":220 };
+const KIND_LABEL = { note:"ノート", print:"まとめ", solution:"解答", catalog:"定石集" };
+const Q_LABEL = { full:"全文検索可", low:"数式・英数字のみ", none:"検索不可", error:"検索不可", locked:"パスワード保護" };
+const TABS = [
+  { id:"search", label:"検索" }, { id:"books", label:"資料一覧" }, { id:"shelf", label:"本棚" },
+  { id:"order", label:"注文票" }, { id:"exam", label:"試験対策" }, { id:"info", label:"情報" }
+];
+
+function esc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function norm(s){ return s.normalize("NFKC").toLowerCase(); }
+function fieldHue(f){ return FIELD_HUE[f] === undefined ? 220 : FIELD_HUE[f]; }
+function spaced(s){ return s.length <= 8 ? s.split("").join(" ") : s; }
+function byFile(file){ return META.books.find(b => b.file === file); }
+function byShelf(id){ return SHELF.find(b => b.id === id); }
+function shelfByPdfName(name){ return SHELF.find(b => b.pdf && b.pdf.split("\\").pop() === name); }
+function bookField(b){
+  const c = CUR.fields[b.file];
+  if (c) return c.field;
+  if (b.dir === "過去問") return "過去問";
+  if (b.dir === "本棚") { const s = shelfByPdfName(b.file); if (s) return s.field; }
+  const relDir = b.rel.substring(0, b.rel.lastIndexOf("/"));
+  let best = "その他", bestLen = -1;
+  for (const k in CUR.dirFields) if (relDir.startsWith(k) && k.length > bestLen) { best = CUR.dirFields[k]; bestLen = k.length; }
+  return best;
+}
+function bookTitle(b){
+  const c = CUR.fields[b.file]; if (c) return c.title;
+  if (b.dir === "本棚") { const s = shelfByPdfName(b.file); if (s) return s.title; }
+  return b.file.replace(/\.pdf$/i, "");
+}
+function fileUrl(b, page){
+  const base = PDF_BASE[b.dir];
+  if (!base) return localUrl(b.rel);
+  const parts = b.rel.split("/"); parts.shift();
+  const url = base + parts.map(encodeURIComponent).join("/");
+  return page ? url + "#page=" + page : url;
+}
+function localUrl(p){
+  return "file:///" + String(p).replace(/\\/g, "/").split("/").map(s => /^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)).join("/");
+}
+function toast(msg){
+  let el = document.querySelector(".toast");
+  if (!el) { el = document.createElement("div"); el.className = "toast"; document.body.appendChild(el); }
+  el.textContent = msg; el.classList.add("on");
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("on"), 1800);
+}
+function copyText(s){
+  const done = () => toast("コピーしました。Claude Code に貼り付けてください");
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).then(done, () => fallbackCopy(s, done));
+  else fallbackCopy(s, done);
+}
+function fallbackCopy(s, done){
+  const ta = document.createElement("textarea");
+  ta.value = s; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); done(); } catch (e) { toast("コピーできませんでした。枠から手動でコピーしてください"); }
+  document.body.removeChild(ta);
+}
+function lsGet(k, fb){ try { return JSON.parse(localStorage.getItem(k) || JSON.stringify(fb)); } catch (e) { return fb; } }
+function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+
+/* ---------- タブ ---------- */
+document.getElementById("nav").innerHTML =
+  TABS.map((t, i) => `<button class="${i === 0 ? "on" : ""}" data-tab="${t.id}">${esc(t.label)}</button>`).join("");
+document.querySelectorAll("nav button").forEach(btn => btn.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach(b => b.classList.remove("on"));
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("on"));
+  btn.classList.add("on");
+  document.getElementById("tab-" + btn.dataset.tab).classList.add("on");
+}));
+function goTab(id){ const b = document.querySelector('nav button[data-tab="' + id + '"]'); if (b) b.click(); }
+
+/* ---------- 本文の遅延ロード ---------- */
+let textsLoaded = null;
+function loadTexts(onProgress){
+  if (textsLoaded) return textsLoaded;
+  const targets = META.books.filter(b => b.quality === "full" || b.quality === "low");
+  let done = 0;
+  textsLoaded = Promise.all(targets.map(b => new Promise(res => {
+    const s = document.createElement("script");
+    s.src = "data/text/" + b.id + ".js";
+    s.onload = s.onerror = () => { done++; if (onProgress) onProgress(done, targets.length); res(); };
+    document.head.appendChild(s);
+  })));
+  return textsLoaded;
+}
+const normCache = {};
+function normPages(b){
+  if (!normCache[b.id]) {
+    const pages = (window.DB_TEXT || {})[b.id];
+    normCache[b.id] = pages ? pages.map(norm) : null;
+  }
+  return normCache[b.id];
+}
+
+/* ---------- 検索 ---------- */
+function expandTerm(t){
+  const set = new Set([t]);
+  if (document.getElementById("useSyn").checked) {
+    for (const g of SYN) if (g.some(a => norm(a) === t)) g.forEach(a => set.add(norm(a)));
+  }
+  return [...set];
+}
+function runSearch(){
+  const qRaw = document.getElementById("q").value.trim();
+  const status = document.getElementById("status");
+  const out = document.getElementById("results");
+  if (!qRaw) { status.textContent = "キーワードを入力してください"; return; }
+  status.textContent = "本文データを読み込み中…";
+  loadTexts((d, t) => { status.textContent = `本文データを読み込み中… ${d}/${t}`; }).then(() => {
+    const t0 = performance.now();
+    const groups = norm(qRaw).split(/\s+/).filter(x => x).map(expandTerm);
+    const fieldFilter = document.getElementById("fieldSel").value;
+    const hideMine = document.getElementById("hideMine").checked;
+    const bookHits = [];
+    for (const b of META.books) {
+      if (fieldFilter && bookField(b) !== fieldFilter) continue;
+      if (hideMine && b.dir === "本棚") continue;
+      const pages = normPages(b);
+      if (!pages) continue;
+      const hits = [];
+      for (let i = 0; i < pages.length; i++) {
+        if (groups.every(g => g.some(a => pages[i].includes(a)))) hits.push(i);
+        if (hits.length >= 300) break;
+      }
+      if (hits.length) bookHits.push({ b, hits });
+    }
+    /* 教科書を優先し、自作ノートは後ろに置く（自作で埋まるのを防ぐ） */
+    bookHits.sort((x, y) => {
+      const mx = x.b.dir === "本棚" ? 1 : 0, my = y.b.dir === "本棚" ? 1 : 0;
+      return mx !== my ? mx - my : y.hits.length - x.hits.length;
+    });
+    const ms = Math.round(performance.now() - t0);
+    const total = bookHits.reduce((s, x) => s + x.hits.length, 0);
+    status.textContent = total ? `${bookHits.length} 資料 ${total} ページがヒット（${ms}ms）` : "ヒットなし。同義語チェックや別の言い回しを試してください";
+    const ask = document.createElement("button");
+    ask.className = "linkbtn"; ask.id = "askNote";
+    ask.textContent = "このキーワードでノートを注文する";
+    ask.onclick = () => gotoOrder("theme", { topic: qRaw });
+    status.appendChild(ask);
+    out.innerHTML = "";
+    const flatAlts = groups.flat();
+    for (const { b, hits } of bookHits) out.appendChild(renderBookHits(b, hits, flatAlts));
+  });
+}
+function snippetHtml(b, pageIdx, alts){
+  const pg = normPages(b)[pageIdx];
+  let pos = -1;
+  for (const a of alts) { const p = pg.indexOf(a); if (p >= 0 && (pos < 0 || p < pos)) pos = p; }
+  const start = Math.max(0, pos - 60);
+  let snip = (start > 0 ? "…" : "") + pg.substring(start, Math.min(pg.length, pos + 90)) + "…";
+  snip = esc(snip);
+  for (const a of [...alts].sort((x, y) => y.length - x.length)) {
+    if (!a) continue;
+    snip = snip.split(esc(a)).join("<mark>" + esc(a) + "</mark>");
+  }
+  return snip;
+}
+function renderBookHits(b, hits, alts){
+  const div = document.createElement("div");
+  div.className = "bookhit";
+  const mine = b.dir === "本棚" ? `<span class="mine">自作</span>` : "";
+  div.innerHTML = `<h3>${mine}<span class="fld">${esc(bookField(b))}</span>${esc(bookTitle(b))} <span class="cnt">（${esc(b.file)}・${hits.length}ページ）</span></h3>`;
+  const list = document.createElement("div");
+  const renderRows = n => {
+    list.innerHTML = "";
+    hits.slice(0, n).forEach(i => {
+      const row = document.createElement("div");
+      row.className = "hit";
+      row.innerHTML = `<a class="pg" href="${fileUrl(b, i + 1)}" target="_blank">p.${i + 1} ↗</a>${snippetHtml(b, i, alts)}`;
+      list.appendChild(row);
+    });
+    if (hits.length > n) {
+      const more = document.createElement("div");
+      more.className = "more";
+      more.textContent = `…他 ${hits.length - n} ページを表示`;
+      more.onclick = () => renderRows(hits.length);
+      list.appendChild(more);
+    }
+  };
+  renderRows(8);
+  div.appendChild(list);
+  return div;
+}
+document.getElementById("go").addEventListener("click", runSearch);
+document.getElementById("q").addEventListener("keydown", e => { if (e.key === "Enter") runSearch(); });
+
+/* ---------- 資料一覧 ---------- */
+function renderBooks(){
+  const wrap = document.getElementById("booklist");
+  const groupsMap = {};
+  for (const b of META.books) (groupsMap[bookField(b)] = groupsMap[bookField(b)] || []).push(b);
+  const known = FIELD_ORDER.filter(f => groupsMap[f]);
+  const extra = Object.keys(groupsMap).filter(f => FIELD_ORDER.indexOf(f) < 0).sort();
+  const fields = known.concat(extra);
+  const fsel = document.getElementById("fieldSel");
+  fields.forEach(f => { const o = document.createElement("option"); o.value = f; o.textContent = f; fsel.appendChild(o); });
+  wrap.innerHTML = "";
+  for (const f of fields) {
+    const books = groupsMap[f];
+    const searchable = books.filter(b => b.quality === "full").length;
+    const atCount = books.reduce((s, b) => s + (ATTACH[b.file] || []).length, 0);
+    const fc = document.createElement("details"); fc.className = "fieldcard";
+    fc.innerHTML = `<summary><h3>${esc(f)}<span class="lead">${books.length}冊（全文検索可 ${searchable}）${atCount ? "｜付属資料 " + atCount + "件" : ""}</span></h3></summary>`;
+    const grp = document.createElement("div"); grp.className = "grp";
+    for (const b of books) {
+      const c = CUR.fields[b.file] || {};
+      const tocs = CUR.toc.filter(t => t.file === b.file);
+      const ats = ATTACH[b.file] || [];
+      const card = document.createElement("details"); card.className = "card bookcard";
+      card.innerHTML =
+        `<summary><h3><a href="${fileUrl(b, 1)}" target="_blank">${esc(bookTitle(b))} ↗</a>` +
+        `<span class="badge b-${b.quality}">${Q_LABEL[b.quality] || b.quality}</span>` +
+        `<span class="lead">${b.dir === "教材" ? "🤖Claude Code作成｜" : ""}${b.dir === "本棚" ? "📕自作ノート｜" : ""}${b.dir === "過去問" ? "📝過去問｜" : ""}${esc(b.file)}｜${b.pages}頁${tocs.length ? "｜目次 " + tocs.length + "項目" : ""}${ats.length ? "｜📎" + ats.length : ""}</span></h3></summary>` +
+        `<div class="body">` +
+        (c.note ? `<div class="meta">${esc(c.note)}</div>` : "") +
+        (tocs.length ? `<ul class="toc">` + tocs.map(t =>
+          `<li><a href="${fileUrl(b, t.page)}" target="_blank">p.${t.page}${t.approx ? "±" : ""}</a> ${esc(t.unit)}</li>`).join("") + `</ul>`
+          : `<div class="stat">目次は未登録です。Claude Code に「${esc(b.file)} の目次を索引に入れて」と依頼できます。</div>`) +
+        (ats.length ? `<div class="attach"><div class="ttl">付属資料（作成済み）</div>` +
+          ats.map(a => `<a href="${localUrl(a.path)}" target="_blank">📄 ${esc(a.title)}</a>`).join("") + `</div>` : "") +
+        `<div class="btnrow" style="margin-top:10px"><button class="sec" data-sol="${esc(b.file)}">解答を注文する</button></div>` +
+        `</div>`;
+      grp.appendChild(card);
+    }
+    fc.appendChild(grp);
+    wrap.appendChild(fc);
+  }
+  wrap.querySelectorAll("[data-sol]").forEach(btn => btn.onclick = () => gotoOrder("solution", { book: btn.dataset.sol }));
+}
+
+/* ---------- ノート本文の描画（移行期・legacyNote 用） ---------- */
+function mathify(s){ return esc(s).replace(/\$([^$]+)\$/g, (m, x) => `<span class="mth">${x}</span>`); }
+function renderMathAll(){
+  if (!window.katex) return;
+  document.querySelectorAll(".mth:not(.mth-done), .mthd:not(.mth-done)").forEach(el => {
+    const tex = el.textContent;
+    const disp = el.classList.contains("mthd");
+    try { katex.render(tex, el, { throwOnError:false, displayMode:disp }); el.classList.add("mth-done"); }
+    catch (e) { /* 不正なTeXは等幅表示のまま */ }
+  });
+}
+function onKatexLoaded(){ renderMathAll(); }
+window.onKatexLoaded = onKatexLoaded;
+function renderBlocks(blocks){
+  return (blocks || []).map(b => {
+    if (typeof b === "string") return `<p>${mathify(b)}</p>`;
+    if (b.m) return `<span class="mthd">${esc(b.m)}</span>`;
+    if (b.ul) return `<ul class="pts">` + b.ul.map(x => `<li>${mathify(x)}</li>`).join("") + `</ul>`;
+    if (b.box) return `<div class="kbox"><b>${esc(b.box)}</b>${renderBlocks(b.body)}</div>`;
+    return "";
+  }).join("");
+}
+function legacyNoteOf(b){ return b.legacyNote ? NOTES.find(n => n.id === b.legacyNote) : null; }
+function shelfLead(b){
+  if (b.lead) return b.lead;
+  const n = legacyNoteOf(b);
+  if (n) return n.lead || ((n.summary || [])[0] || "");
+  return "";
+}
+
+/* ---------- 本棚 ---------- */
+function shelfFields(){ const s = new Set(SHELF.map(b => b.field));
+  return FIELD_ORDER.filter(f => s.has(f)).concat([...s].filter(f => FIELD_ORDER.indexOf(f) < 0).sort()); }
+function coverHtml(b){
+  const hue = fieldHue(b.field);
+  const wip = b.pdf ? "" : `<span class="cover-wip">未製本</span>`;
+  const foot = (b.pdf ? (b.updated || "").slice(0, 7) + "　" + (b.pages || 0) + "頁" : "PDF未作成") +
+               (b.version > 1 ? "　第" + b.version + "版" : "");
+  return `<div class="cover" data-sid="${esc(b.id)}" style="--cf:hsl(${hue} 45% 42%)">` +
+    `<span class="cover-kind k-${esc(b.kind)}">${esc(KIND_LABEL[b.kind] || b.kind)}</span>` +
+    `<div class="cover-in">` +
+      `<div class="cover-field">${esc(spaced(b.field))}</div><div class="cover-rule"></div>` +
+      `<div class="cover-title">${esc(b.title)}</div>` +
+      (b.subtitle ? `<div class="cover-sub">${esc(b.subtitle)}</div>` : "") +
+      `<div class="cover-foot">${esc(foot)}</div>` +
+    `</div>${wip}</div>`;
+}
+function renderShelf(){
+  const f = document.getElementById("shField").value;
+  const k = document.getElementById("shKind").value;
+  const sort = document.getElementById("shSort").value;
+  const list = SHELF.filter(b => (!f || b.field === f) && (!k || b.kind === k));
+  const cmp = (a, b) =>
+    sort === "title" ? a.title.localeCompare(b.title, "ja") :
+    sort === "kind"  ? (String(a.kind).localeCompare(String(b.kind)) || a.title.localeCompare(b.title, "ja")) :
+    String(b.updated).localeCompare(String(a.updated));
+  document.getElementById("shCount").textContent =
+    `${list.length} 冊（全 ${SHELF.length} 冊／未製本 ${SHELF.filter(x => !x.pdf).length}）`;
+  /* 分野の棚（details）を開くと、その分野の表紙が並ぶ二階層 */
+  const fields = shelfFields().filter(fd => list.some(b => b.field === fd));
+  document.getElementById("shelfGrid").innerHTML = fields.map(fd => {
+    const bs = list.filter(b => b.field === fd).slice().sort(cmp);
+    const bound = bs.filter(b => b.pdf).length;
+    const kinds = {};
+    bs.forEach(b => { kinds[b.kind] = (kinds[b.kind] || 0) + 1; });
+    const breakdown = Object.keys(kinds).map(kk => `${KIND_LABEL[kk] || kk} ${kinds[kk]}`).join("・");
+    return `<details class="fieldcard shelffield" open data-field="${esc(fd)}">` +
+      `<summary><h3><span class="fdot" style="background:hsl(${fieldHue(fd)} 45% 42%)"></span>${esc(fd)}` +
+      `<span class="lead">${bs.length}冊（${esc(breakdown)}）` +
+      `${bs.length - bound ? "｜未製本 " + (bs.length - bound) : "｜すべて製本済み"}</span></h3></summary>` +
+      `<div class="grp"><div class="shelf-grid">${bs.map(coverHtml).join("")}</div></div></details>`;
+  }).join("") || `<p class="stat">条件に合う冊がありません。</p>`;
+  document.querySelectorAll("#shelfGrid .cover").forEach(el => el.onclick = () => showShelf(el.dataset.sid));
+  const cur = document.querySelector("#shelfDetail [data-cur]");
+  if (cur && !list.some(b => b.id === cur.dataset.cur)) document.getElementById("shelfDetail").innerHTML = "";
+}
+function showShelf(id){
+  const b = byShelf(id); if (!b) return;
+  document.querySelectorAll("#shelfGrid .cover").forEach(el => el.classList.toggle("on", el.dataset.sid === id));
+  const n = legacyNoteOf(b);
+  let h = `<div class="note" data-cur="${esc(id)}">`;
+  h += `<h3>${esc(b.title)}${b.subtitle ? `　<span class="stat">${esc(b.subtitle)}</span>` : ""}</h3>`;
+  h += `<div class="dt">${esc(b.field)}｜${esc(KIND_LABEL[b.kind] || b.kind)}｜作成 ${esc(b.created)}｜更新 ${esc(b.updated)}` +
+       `${b.version > 1 ? "｜第" + b.version + "版" : ""}｜${b.icloud ? "iCloud同期 " + esc(b.icloud) : "iCloud未同期"}</div>`;
+  h += `<div class="btnrow" style="margin:8px 0 4px">` +
+    (b.pdf ? `<button onclick="window.open('${localUrl(b.pdf)}','_blank')">📖 PDFを開く</button>` : "") +
+    `<button class="sec" data-rev="${esc(b.id)}">✍ 改訂を依頼</button>` +
+    (b.pdf ? "" : `<button class="sec" data-mk="${esc(b.id)}">📄 PDFにする（製本を注文）</button>`) + `</div>`;
+  const lead = shelfLead(b);
+  if (lead) h += `<p>${mathify(lead)}</p>`;
+  if (b.tags && b.tags.length) h += `<div class="stat">🏷 ${b.tags.map(esc).join("・")}</div>`;
+  if (b.outline && b.outline.length) {
+    h += `<h4 class="sec-h">目次</h4><ul class="toc">` +
+      b.outline.map(o => `<li>§${o.n} ${esc(o.h)}${o.aim ? " — <span class='stat'>" + esc(o.aim) + "</span>" : ""}</li>`).join("") + `</ul>`;
+  }
+  if (b.sources && b.sources.length) {
+    h += `<h4 class="sec-h">典拠</h4><ul class="toc">` + b.sources.map(s => {
+      const bk = byFile(s.file);
+      return `<li>${bk ? `<a href="${fileUrl(bk, 1)}" target="_blank">${esc(s.file)} ↗</a>` : esc(s.file)}${s.pages ? "　" + esc(s.pages) : ""}</li>`;
+    }).join("") + `</ul>`;
+  }
+  if (b.exercises && b.exercises.length) {
+    h += `<h4 class="sec-h">演習の所在</h4><ul class="toc">` + b.exercises.map(ex => {
+      const bk = byFile(ex.file);
+      const link = bk ? `<a href="${fileUrl(bk, ex.page)}" target="_blank">${esc(ex.file)} p.${ex.page} ↗</a>` : esc(ex.file);
+      const at = (ATTACH[ex.file] || [])[0];
+      const solBtn = at ? `<a class="linkbtn" href="${localUrl(at.path)}" target="_blank">📄 解答あり</a>`
+        : `<button class="linkbtn exsol" data-book="${esc(ex.file)}" data-range="p.${ex.page}">✍ 解答を注文</button>`;
+      return `<li>${link} — ${mathify(ex.desc)}${solBtn}</li>`;
+    }).join("") + `</ul>`;
+  }
+  if (b.history && b.history.length) {
+    h += `<h4 class="sec-h">改訂履歴</h4><ul class="toc">` + b.history.map(x =>
+      `<li>${esc(x.date)}　${esc({created:"作成", revised:"改訂", imported:"取り込み"}[x.type] || x.type)}` +
+      `${x.where ? "　" + esc(x.where) : ""}${x.why ? "　— " + esc(x.why) : ""}${x.note ? "　" + esc(x.note) : ""}</li>`).join("") + `</ul>`;
+  }
+  if (n) {
+    h += `<h4 class="sec-h">本文（PDF化前のノート）</h4>`;
+    if (n.summary) h += n.summary.map(p => `<p>${mathify(p)}</p>`).join("");
+    for (const s of (n.sections || [])) h += `<h4 class="sec-h">${esc(s.h)}</h4>` + renderBlocks(s.blocks);
+    if (n.perBook && n.perBook.length) {
+      h += `<h4 class="sec-h">資料ごとの扱いの違い</h4><table><tr><th>資料</th><th>特徴</th></tr>` +
+        n.perBook.map(pb => { const bk = byFile(pb.file);
+          const link = bk ? `<a href="${fileUrl(bk, pb.page)}" target="_blank">${esc(bookTitle(bk))} p.${pb.page} ↗</a>` : esc(pb.file);
+          return `<tr><td>${link}</td><td>${mathify(pb.feature)}</td></tr>`; }).join("") + `</table>`;
+    }
+    if (n.exercises && n.exercises.length) {
+      h += `<h4 class="sec-h">手を動かす（演習の所在）</h4><ul class="toc">` + n.exercises.map(ex => {
+        const bk = byFile(ex.file);
+        const link = bk ? `<a href="${fileUrl(bk, ex.page)}" target="_blank">${esc(ex.file)} p.${ex.page} ↗</a>` : esc(ex.file);
+        const at = (ATTACH[ex.file] || [])[0];
+        const solBtn = at ? `<a class="linkbtn" href="${localUrl(at.path)}" target="_blank">📄 解答あり</a>`
+          : `<button class="linkbtn exsol" data-book="${esc(ex.file)}" data-range="p.${ex.page}">✍ 解答を注文</button>`;
+        return `<li>${link} — ${mathify(ex.desc)}${solBtn}</li>`; }).join("") + `</ul>`;
+    }
+  }
+  h += `</div>`;
+  const d = document.getElementById("shelfDetail");
+  d.innerHTML = h;
+  d.querySelectorAll("[data-rev]").forEach(x => x.onclick = () => gotoOrder("revise", { target: x.dataset.rev }));
+  d.querySelectorAll("[data-mk]").forEach(x => x.onclick = () => gotoOrder("revise", { target: x.dataset.mk, bind: true }));
+  d.querySelectorAll(".exsol").forEach(x => x.onclick = () => gotoOrder("solution", { book: x.dataset.book, range: x.dataset.range }));
+  renderMathAll();
+  d.scrollIntoView({ behavior:"smooth", block:"nearest" });
+}
+function initShelfFilters(){
+  document.getElementById("shField").innerHTML =
+    `<option value="">すべての分野</option>` + shelfFields().map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join("");
+  const kinds = [...new Set(SHELF.map(b => b.kind))];
+  document.getElementById("shKind").innerHTML =
+    `<option value="">すべての種別</option>` + kinds.map(k => `<option value="${esc(k)}">${esc(KIND_LABEL[k] || k)}</option>`).join("");
+  ["shField","shKind","shSort"].forEach(id => document.getElementById(id).onchange = renderShelf);
+}
+
+/* ---------- 疑問ストック ---------- */
+const INBOX_KEY = "shiryoNavi.inbox";
+let INBOX_META = lsGet(INBOX_KEY, {});
+const inboxSel = new Set();
+function ibMeta(f){ return INBOX_META[f] || {}; }
+function setIbMeta(f, patch){
+  INBOX_META[f] = Object.assign({}, INBOX_META[f], patch);
+  if (!INBOX_META[f].memo && !INBOX_META[f].done) delete INBOX_META[f];
+  lsSet(INBOX_KEY, INBOX_META);
+}
+function renderInbox(){
+  const mode = document.getElementById("ibFilter").value;
+  let list = INBOX.slice();
+  if (mode === "undone") list = list.filter(f => !ibMeta(f.file).done);
+  else if (mode === "image") list = list.filter(f => f.kind === "image");
+  else if (mode === "pdf") list = list.filter(f => f.kind === "pdf");
+  const undone = INBOX.filter(f => !ibMeta(f.file).done).length;
+  document.getElementById("inboxLead").textContent =
+    `受信箱 ${INBOX.length} 件（未処理 ${undone}／メモ済み ${Object.keys(INBOX_META).filter(k => ibMeta(k).memo).length}）　選択 ${inboxSel.size} 件`;
+  document.getElementById("inboxGrid").innerHTML = list.map(f => {
+    const m = ibMeta(f.file);
+    const icon = f.kind === "pdf" ? "📄" : f.kind === "text" ? "📝" : "🖼";
+    const thumb = f.thumb ? `<img src="${f.thumb}" alt="" data-open="${esc(f.path)}">`
+                          : `<div class="noimg" data-open="${esc(f.path)}">${icon}</div>`;
+    return `<div class="qcard ${inboxSel.has(f.file) ? "sel" : ""}" data-f="${esc(f.file)}">${thumb}` +
+      `<div class="fn">${esc(f.file)}<br>${esc(f.mtime)}</div>` +
+      `<input type="text" placeholder="一言メモ（例: この畳み込みが分からない）" value="${esc(m.memo || "")}" data-memo="${esc(f.file)}">` +
+      `<div class="row"><label><input type="checkbox" data-sel="${esc(f.file)}" ${inboxSel.has(f.file) ? "checked" : ""}> 選ぶ</label>` +
+      `<label style="margin-left:auto"><input type="checkbox" data-done="${esc(f.file)}" ${m.done ? "checked" : ""}> 済</label></div></div>`;
+  }).join("") || `<p class="stat">受信箱は空です。</p>`;
+  const g = document.getElementById("inboxGrid");
+  g.querySelectorAll("[data-open]").forEach(el => el.onclick = () => window.open(localUrl(el.dataset.open), "_blank"));
+  g.querySelectorAll("[data-memo]").forEach(el => el.onchange = () => { setIbMeta(el.dataset.memo, { memo: el.value.trim() }); renderInbox(); });
+  g.querySelectorAll("[data-sel]").forEach(el => el.onchange = () => {
+    if (el.checked) inboxSel.add(el.dataset.sel); else inboxSel.delete(el.dataset.sel);
+    renderInbox();
+  });
+  g.querySelectorAll("[data-done]").forEach(el => el.onchange = () => { setIbMeta(el.dataset.done, { done: el.checked }); renderInbox(); });
+}
+document.getElementById("ibFilter").onchange = renderInbox;
+document.getElementById("ibClear").onclick = () => { inboxSel.clear(); renderInbox(); };
+document.getElementById("ibOrder").onclick = () => {
+  if (!inboxSel.size) { toast("先に「選ぶ」にチェックを入れてください"); return; }
+  const qs = [...inboxSel].map(f => {
+    const it = INBOX.find(x => x.file === f);
+    return { file: f, path: it ? it.path : f, memo: (ibMeta(f).memo || "") };
+  });
+  gotoOrder("image", { questions: qs });
+};
+
+/* ---------- 注文票 ---------- */
+const LS_KEY = "shiryoNavi.requests";
+const SPEC_FIELDS = [
+  { key:"density", label:"濃度・分量はどれくらい？", opts:[
+    { v:"full",   t:"完全証明",     d:"式変形を一切飛ばさない" },
+    { v:"main",   t:"主要導出のみ", d:"重要な導出だけ丁寧に" },
+    { v:"digest", t:"結論集",       d:"結果と使いどころが中心" }] },
+  { key:"template", label:"構成テンプレートは？", opts:[
+    { v:"understand", t:"理解重視型", d:"動機 → 導出 → 帰結" },
+    { v:"exam",       t:"試験対策型", d:"頻出順・解法直結" },
+    { v:"dict",       t:"辞書型",     d:"定義・定理を列挙" }] },
+  { key:"exercises", label:"演習の扱いは？", opts:[
+    { v:"inline",  t:"本文に織り込む" }, { v:"chapter", t:"章末にまとめる" },
+    { v:"list",    t:"演習リストのみ" }, { v:"none",    t:"なし" }] },
+  { key:"layout", label:"レイアウト・記法は？", opts:[
+    { v:"auto",     t:"分野に任せる", d:"数学系＝数学風／物理系＝物理風" },
+    { v:"math",     t:"数学風",       d:"定義・定理は番号付きグレー箱" },
+    { v:"physics",  t:"物理風",       d:"角丸細枠・番号なし" }] },
+  { key:"figures", label:"図の量は？", opts:[
+    { v:"many", t:"多め" }, { v:"normal", t:"標準" }, { v:"few", t:"少なめ" }] }
+];
+const SPEC_TEXT = {
+  density:{ full:"完全証明（式変形を飛ばさない）", main:"主要導出のみ", digest:"結論集（結果と使いどころ中心）" },
+  template:{ understand:"理解重視型（動機→導出→帰結）", exam:"試験対策型（頻出順・解法直結）", dict:"辞書型（定義・定理の列挙）" },
+  exercises:{ inline:"本文に織り込む", chapter:"章末にまとめる", list:"演習リストのみ", none:"入れない" },
+  layout:{ auto:"分野に応じて選ぶ", math:"数学スタイル", physics:"物理スタイル" },
+  figures:{ many:"多め", normal:"標準", few:"少なめ" }
+};
+const DELIVERY =
+  "【納品の進め方】いきなり本文を書かず、まず構成案（①目次の節立て ②各節の狙いを1〜2行 ③使用する資料と該当頁 ④想定頁数 ⑤採用する記法・レイアウト）を提示してください。" +
+  "私が赤入れして合意してから執筆に入ってください。構成案は 本棚\\_制作中\\ に保存してください。";
+const FINISH =
+  "【完成後】LaTeXで組んで表紙付きPDFにし、本棚\\<分野>\\ に保存 → data\\shelf.js に登録 → iCloudの本棚へミラー → 索引を増分更新してください（shiryo-navi のノートレイアウト仕様に従う）。";
+
+let ORD = { pattern:"theme", spec:{}, questions:[], target:null };
+
+const ORDER_PATTERNS = {
+  theme: { label:"① テーマからノート", hint:"複数の資料を横断して一冊にまとめます。",
+    fields:[ { k:"topic", label:"トピック（必須）", type:"text", req:true, ph:"例: フーリエ変換 ／ ガウスの法則 ／ 断熱不変量" },
+             { k:"field", label:"分野（任意）", type:"field" } ],
+    defaults:{ density:"full", template:"understand", exercises:"chapter", layout:"auto", figures:"normal", pages:16 },
+    build:o => `「${o.topic}」について、資料を横断したトピックノートを作ってください。` +
+      (o.field ? `（分野: ${o.field}）` : "") +
+      `\n共通する説明の流れを軸に据え、資料ごとに特徴的な扱いの違いがあれば示し、演習問題の所在も頁付きで挙げてください。` },
+  book: { label:"② 教科書からノート", hint:"1冊の記述を軸にまとめます。",
+    fields:[ { k:"book", label:"教科書（必須）", type:"book", req:true },
+             { k:"range", label:"範囲（必須）— 章・ページなど", type:"text", req:true, ph:"例: 第2章 ／ p.21-28" },
+             { k:"topic", label:"トピック（任意）— 空なら範囲の内容から決めます", type:"text", ph:"例: フーリエ変換" } ],
+    defaults:{ density:"full", template:"understand", exercises:"chapter", layout:"auto", figures:"normal", pages:16 },
+    build:o => `資料「${o.book}」の「${o.range}」を軸に、トピックノートを作ってください。` +
+      (o.topic ? `テーマは「${o.topic}」。` : `テーマ名は範囲の内容から適切に定めてください。`) +
+      `\nこの資料の説明の流れを軸にしつつ、同じテーマの他資料での扱いの違いも含めてください。` },
+  solution: { label:"③ 解答を依頼", hint:"問題の解答プリントを作ります。",
+    fields:[ { k:"book", label:"教科書・問題集（必須）", type:"book", req:true },
+             { k:"range", label:"ページ・問題番号（推奨）", type:"text", ph:"例: p.3-8 ／ 問1,3,5 ／ 第2章の全問" } ],
+    defaults:{ density:"full", template:"understand", exercises:"none", layout:"auto", figures:"normal", pages:8 },
+    build:o => `資料「${o.book}」の解答プリントを作成してください（daigaku-kaisetsu モードA）。` +
+      (o.range ? `\n対象範囲: ${o.range}（この範囲に限定してください）` : "") +
+      `\n《方針》欄は必ず解法定石カタログの番号を引いて書き、その問題のためだけの独自技巧は使わないでください。` +
+      `該当する定石が無ければ、新しい定石として番号を付けてカタログに追加してから引いてください。` },
+  exercise: { label:"④ 演習問題を集める", hint:"テーマの演習を横断で集めます。",
+    fields:[ { k:"topic", label:"トピック（必須）", type:"text", req:true, ph:"例: 連成振動 ／ トンネル効果" },
+             { k:"field", label:"分野（任意）", type:"field" } ],
+    defaults:{ density:"digest", template:"dict", exercises:"list", layout:"auto", figures:"few", pages:6 },
+    build:o => `「${o.topic}」の演習問題を、資料群から横断で集めてください。` +
+      (o.field ? `（分野: ${o.field}）` : "") +
+      `\n似た題材の類題も含め、ファイル名と頁を付けて挙げ、難易度の目安も添えてください。` },
+  image: { label:"⑤ 画像から依頼", hint:"疑問ストックで選んだ写真について議論します。",
+    fields:[ { k:"topic", label:"まとめて何を知りたいか（必須）", type:"text", req:true, ph:"例: 畳み込み積分の意味と計算手順" },
+             { k:"field", label:"分野（任意）", type:"field" } ],
+    defaults:{ density:"full", template:"understand", exercises:"none", layout:"auto", figures:"normal", pages:8 },
+    build:o => `次の画像（紙の教科書を撮影したもの）について、「${o.topic}」を軸に議論してノートを作ってください。` +
+      (o.field ? `（分野: ${o.field}）` : "") +
+      `\n【画像と疑問】\n` + (o.questions || []).map((q, i) =>
+        `${i + 1}. ${q.path}${q.memo ? `\n   疑問: ${q.memo}` : ""}`).join("\n") +
+      `\n画像を読んで何が書かれているかを確認し、私の疑問に直接答えることを最優先にしてください。` },
+  revise: { label:"⑥ 改訂を依頼", hint:"本棚の冊に赤入れします。",
+    fields:[ { k:"target", label:"対象の冊（必須）", type:"shelf", req:true },
+             { k:"revisions", label:"直したいところ（必須）— 1行に1件、節番号を付けて", type:"textarea", req:true,
+               ph:"例:\n§3 式変形をもっと細かく。3行飛んでいて追えなかった\n§5 具体例を1つ足してほしい" } ],
+    defaults:{ density:"full", template:"understand", exercises:"chapter", layout:"auto", figures:"normal", pages:0 },
+    build:o => { const b = byShelf(o.target);
+      return `本棚の「${b ? b.title : o.target}」（shelf.js の id: ${o.target}）を改訂してください。` +
+        (b && !b.pdf ? `\nこの冊はまだPDFになっていません（notes.js の ${b.legacyNote} に本文があります）。今回の改訂内容を反映しつつ、二段階納品の手順でPDF化してください。` : "") +
+        `\n【直したいところ】\n${o.revisions || ""}` +
+        `\n改訂は最新一本を上書きし（ファイル名の日付は改訂日に更新、旧PDFとiCloud側の旧ファイルは削除）、shelf.js の version を進めて history に「いつ・どこを・なぜ」を追記してください。` +
+        `\nこの赤入れから私の好みが読み取れたら、執筆スタイル台帳への追記を提案してください。`; } },
+  exam: { label:"⑦ 試験対策まとめ", hint:"過去問の傾向から頻出順に作ります。",
+    fields:[ { k:"course", label:"科目（必須）", type:"course", req:true },
+             { k:"scope", label:"範囲（任意）", type:"text", ph:"例: 全範囲 ／ 第3章以降" } ],
+    defaults:{ density:"main", template:"exam", exercises:"chapter", layout:"auto", figures:"normal", pages:12 },
+    build:o => { const st = examStats(o.course);
+      return `「${o.course}」の試験対策まとめプリントを作ってください。` +
+        (o.scope ? `（範囲: ${o.scope}）` : "") +
+        `\n【過去問の傾向（data\\exams.js より）】\n` +
+        st.slice(0, 12).map(x => `・${x.topic}（${x.n}回：${x.where.join("・")}）${x.pattern ? ` 定石 ${x.pattern}` : ""}`).join("\n") +
+        `\n上の頻出順に構成し、各項目に出題実績（年度・大問）を必ず付記してください。` +
+        `\n解法は解法定石カタログの番号を引き、独自技巧を使わないでください。` +
+        `\n過去問PDFは data\\exams.js の path を参照してください。`; } }
+};
+function examStats(course){
+  const cnt = {};
+  EXAMS.filter(x => x.kind === "exam" && (!course || x.course === course)).forEach(x => {
+    x.items.forEach(i => {
+      const k = i.topic;
+      if (!cnt[k]) cnt[k] = { topic:k, n:0, where:[], pattern:i.pattern, field:i.field, shelfId:i.shelfId };
+      cnt[k].n++; cnt[k].where.push(`${x.year}${x.term}${i.q}`);
+      if (!cnt[k].pattern && i.pattern) cnt[k].pattern = i.pattern;
+      if (!cnt[k].shelfId && i.shelfId) cnt[k].shelfId = i.shelfId;
+    });
+  });
+  return Object.values(cnt).sort((a, b) => b.n - a.n || a.topic.localeCompare(b.topic, "ja"));
+}
+function optionsFor(type){
+  if (type === "field") return [""].concat(shelfFields().concat(
+    [...new Set(META.books.map(bookField))].filter(f => shelfFields().indexOf(f) < 0)).filter((v, i, a) => a.indexOf(v) === i));
+  if (type === "book") return [""].concat(META.books.map(b => b.file));
+  if (type === "shelf") return [""].concat(SHELF.map(b => b.id));
+  if (type === "course") return [""].concat([...new Set(EXAMS.map(x => x.course))]);
+  return [""];
+}
+function optLabel(type, v){
+  if (!v) return type === "field" ? "指定しない" : "選択してください";
+  if (type === "shelf") { const b = byShelf(v); return b ? `${b.title}（${b.field}・${KIND_LABEL[b.kind] || b.kind}）` : v; }
+  return v;
+}
+function renderPatRow(){
+  document.getElementById("patRow").innerHTML = Object.keys(ORDER_PATTERNS).map(p =>
+    `<button class="opt ${p === ORD.pattern ? "on" : ""}" data-pat="${p}">${esc(ORDER_PATTERNS[p].label)}` +
+    `<small>${esc(ORDER_PATTERNS[p].hint)}</small></button>`).join("");
+  document.querySelectorAll("#patRow [data-pat]").forEach(b => b.onclick = () => setPattern(b.dataset.pat));
+}
+function setPattern(p, preset){
+  ORD.pattern = p;
+  ORD.spec = Object.assign({}, ORDER_PATTERNS[p].defaults);
+  if (preset && preset.questions) ORD.questions = preset.questions;
+  if (p !== "image") ORD.questions = ORD.questions || [];
+  renderPatRow(); renderOrderForm(preset); updateOrdPrev();
+}
+function renderOrderForm(preset){
+  const P = ORDER_PATTERNS[ORD.pattern];
+  let h = "";
+  P.fields.forEach((f, i) => {
+    h += `<div class="qblock"><p class="qstep">${i + 1}. ${esc(f.label)}</p>`;
+    if (f.type === "text") h += `<div class="frm"><input type="text" id="of-${f.k}" placeholder="${esc(f.ph || "")}"></div>`;
+    else if (f.type === "textarea") h += `<div class="frm"><textarea id="of-${f.k}" rows="4" placeholder="${esc(f.ph || "")}"></textarea></div>`;
+    else h += `<div class="frm"><select id="of-${f.k}">` +
+      optionsFor(f.type).map(v => `<option value="${esc(v)}">${esc(optLabel(f.type, v))}</option>`).join("") + `</select></div>`;
+    h += `</div>`;
+  });
+  if (ORD.pattern === "image") {
+    h += `<div class="qblock"><p class="qstep">添付する画像</p>` +
+      (ORD.questions.length
+        ? `<ul class="toc">` + ORD.questions.map(q => `<li>🖼 ${esc(q.file)}${q.memo ? " — " + esc(q.memo) : ""}</li>`).join("") + `</ul>`
+        : `<p class="qhint">上の「疑問ストック」で画像を選んでから「選んだ疑問をまとめて注文する」を押してください。</p>`) + `</div>`;
+  }
+  const n0 = P.fields.length + 1;
+  SPEC_FIELDS.forEach((sf, i) => {
+    h += `<div class="qblock"><p class="qstep">${n0 + i}. ${esc(sf.label)}</p><div class="opt-row">` +
+      sf.opts.map(o => `<button class="opt ${ORD.spec[sf.key] === o.v ? "on" : ""}" data-spec="${sf.key}" data-v="${o.v}">` +
+        `${esc(o.t)}${o.d ? `<small>${esc(o.d)}</small>` : ""}</button>`).join("") + `</div></div>`;
+  });
+  h += `<div class="qblock"><p class="qstep">${n0 + SPEC_FIELDS.length}. 目安の頁数と備考</p><div class="frm">` +
+    `<label>目安頁数（0なら指定しない）<input type="number" id="of-pages" min="0" max="200" value="${ORD.spec.pages || 0}"></label>` +
+    `<label>備考（自由記述）<textarea id="of-note" rows="3" placeholder="例: 変分原理から入ってほしい ／ 添字の流儀は物理数学2に合わせて ／ 前回のノートより式変形を細かく"></textarea></label>` +
+    `</div><p class="qhint">「構成案から議論する」は常にONです。まず構成案が提示され、合意してから執筆に入ります。</p></div>`;
+  document.getElementById("ordForm").innerHTML = h;
+  document.querySelectorAll("#ordForm [data-spec]").forEach(b => b.onclick = () => {
+    ORD.spec[b.dataset.spec] = b.dataset.v; renderOrderForm(readOrder()); updateOrdPrev();
+  });
+  document.querySelectorAll("#ordForm input, #ordForm select, #ordForm textarea").forEach(el => {
+    el.addEventListener("input", updateOrdPrev); el.addEventListener("change", updateOrdPrev);
+  });
+  if (preset) for (const k in preset) {
+    const el = document.getElementById("of-" + k);
+    if (el) el.value = preset[k];
+  }
+}
+function readOrder(){
+  const P = ORDER_PATTERNS[ORD.pattern];
+  const o = { pattern:ORD.pattern };
+  P.fields.forEach(f => { const el = document.getElementById("of-" + f.k); o[f.k] = el ? String(el.value).trim() : ""; });
+  const pg = document.getElementById("of-pages"), nt = document.getElementById("of-note");
+  o.spec = Object.assign({}, ORD.spec, { pages: pg ? Number(pg.value) || 0 : 0 });
+  o.note = nt ? nt.value.trim() : "";
+  o.outlineFirst = true;
+  if (ORD.pattern === "image") o.questions = ORD.questions;
+  if (o.target) { const b = byShelf(o.target); if (b) { o.title = b.title; o.field = b.field; } }
+  if (!o.title) o.title = o.topic || o.book || o.course || (o.target ? o.target : "");
+  return o;
+}
+function missingOrder(o){
+  return ORDER_PATTERNS[o.pattern].fields.filter(f => f.req && !o[f.k]).map(f => f.label.replace(/（.*$/, ""));
+}
+function specSummary(o){
+  const s = o.spec || {};
+  const rows = SPEC_FIELDS.map(sf => `${sf.label.replace(/は[？?]$/, "").replace(/はどれくらい[？?]$/, "")}: ${SPEC_TEXT[sf.key][s[sf.key]] || "指定なし"}`);
+  if (s.pages) rows.push(`目安の分量: 約 ${s.pages} 頁`);
+  return rows.join("\n");
+}
+function buildOrder(o){
+  const P = ORDER_PATTERNS[o.pattern];
+  let s = P.build(o) + "\n\n" + DELIVERY + "\n\n【仕様】\n" + specSummary(o);
+  if (o.note) s += "\n\n【備考】\n" + o.note;
+  s += "\n\n" + (o.pattern === "solution"
+    ? "【完成後】PDFは 成果物\\資料検索\\解答\\ に保存し、attachments.js と shelf.js に登録、iCloudへミラーしてください。"
+    : FINISH);
+  s += "\n\n※執筆前に `_共有\\執筆スタイル台帳.md` を読み、私の好みに合わせてください。";
+  return s;
+}
+function updateOrdPrev(){
+  const o = readOrder();
+  const miss = missingOrder(o);
+  document.getElementById("ordPrev").textContent = miss.length
+    ? `${miss.join("・")}を入力すると、Claude Code に渡す依頼書がここに表示されます。`
+    : buildOrder(o);
+}
+function gotoOrder(pat, preset){
+  const p = Object.assign({}, preset);
+  setPattern(pat, p);
+  goTab("order");
+  if (p.bind) { toast("この冊の製本を注文できます"); }
+  const first = document.querySelector("#ordForm input, #ordForm select, #ordForm textarea");
+  if (first) first.focus();
+}
+/* 旧形式（kind）→ pattern の互換変換（既存 localStorage を壊さない） */
+function normalizeReq(r){
+  if (r.pattern) return r;
+  const kindMap = { summary:"theme", compare:"theme", where:"theme", free:"theme", exercise:"exercise", solution:"solution" };
+  const p = kindMap[r.kind] || "theme";
+  return Object.assign({}, r, { pattern:p, book: p === "solution" ? r.topic : r.book });
+}
+function loadReqs(){ return lsGet(LS_KEY, []); }
+function saveReqs(list){ return lsSet(LS_KEY, list); }
+function reqInstruction(raw){
+  const r = normalizeReq(raw);
+  if (!ORDER_PATTERNS[r.pattern]) return "";
+  if (!r.spec) r.spec = ORDER_PATTERNS[r.pattern].defaults;
+  return buildOrder(r);
+}
+function reqDone(raw){
+  const r = normalizeReq(raw);
+  if (r.pattern === "solution") return (ATTACH[r.book] || []).length > 0;
+  const t = r.title || r.topic || r.book || "";
+  if (!t) return false;
+  const nt = norm(t);
+  return SHELF.some(b => { const bt = norm(b.title); return b.pdf && (bt.includes(nt) || nt.includes(bt)); });
+}
+function renderReqs(){
+  const list = loadReqs();
+  const wrap = document.getElementById("reqList");
+  const waiting = list.filter(r => !reqDone(r)).length;
+  document.getElementById("reqCount").textContent = list.length ? `（${list.length}件・未処理 ${waiting}件）` : "";
+  if (!list.length) { wrap.innerHTML = "<p class='stat'>まだ注文はありません。上の注文票から追加すると、ここに残ります（このブラウザに保存されます）。</p>"; return; }
+  wrap.innerHTML = "";
+  list.slice().reverse().forEach(raw => {
+    const r = normalizeReq(raw);
+    const done = reqDone(r);
+    const P = ORDER_PATTERNS[r.pattern];
+    const div = document.createElement("div"); div.className = "card";
+    div.innerHTML =
+      `<div class="reqitem"><div>` +
+      `<h3>${esc(r.title || r.topic || r.book || "(無題)")}<span class="badge ${done ? "st-done" : "st-wait"}">${done ? "納品済み" : "未処理"}</span></h3>` +
+      `<div class="meta">${esc(r.created)}｜${esc(P ? P.label : r.pattern)}` +
+      `${r.book && r.topic ? "｜" + esc(r.book) : ""}${r.range ? "｜範囲: " + esc(r.range) : ""}` +
+      `${r.spec && r.spec.pages ? "｜約" + r.spec.pages + "頁" : ""}${r.note ? "｜備考: " + esc(r.note) : ""}</div>` +
+      `</div><button class="del" data-id="${raw.id}">削除</button></div>` +
+      `<div class="btnrow"><button class="sec" data-copy="${raw.id}">この注文をコピー</button></div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll(".del").forEach(b => b.onclick = () => { saveReqs(loadReqs().filter(x => String(x.id) !== b.dataset.id)); renderReqs(); });
+  wrap.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => {
+    const r = loadReqs().find(x => String(x.id) === b.dataset.copy);
+    if (r) copyText(reqInstruction(r));
+  });
+}
+function addOrder(){
+  const o = readOrder();
+  const miss = missingOrder(o);
+  if (miss.length) { toast(`${miss.join("・")}を入力してください`); return null; }
+  o.id = Date.now();
+  o.created = new Date().toISOString().slice(0, 10);
+  const list = loadReqs(); list.push(o);
+  if (!saveReqs(list)) { toast("保存できませんでした（ブラウザの設定を確認）"); return null; }
+  renderReqs();
+  return o;
+}
+function orderPayload(list){
+  return { app:"資料検索", type:"order", version:2,
+    exported:new Date().toISOString().slice(0, 16).replace("T", " "),
+    orders:list.map(r => Object.assign({}, normalizeReq(r), { instruction: reqInstruction(r) })) };
+}
+function exportReqs(){
+  const list = loadReqs().filter(r => !reqDone(r));
+  if (!list.length) { toast("書き出す未処理の注文がありません"); return; }
+  const payload = orderPayload(list);
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:"application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "注文票.json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  toast("ダウンロードフォルダに書き出しました");
+}
+document.getElementById("ordCopy").onclick = () => {
+  const o = readOrder(); const miss = missingOrder(o);
+  if (miss.length) { toast(`${miss.join("・")}を入力してください`); return; }
+  copyText(buildOrder(o)); addOrder();
+};
+document.getElementById("ordAdd").onclick = () => { if (addOrder()) toast("注文リストに追加しました"); };
+document.getElementById("reqExport").onclick = exportReqs;
+
+/* ---------- 試験対策 ---------- */
+function renderExam(){
+  const course = document.getElementById("exCourse").value;
+  const body = document.getElementById("examBody");
+  const courses = course ? [course] : [...new Set(EXAMS.map(x => x.course))];
+  let h = "";
+  courses.forEach(c => {
+    const sits = EXAMS.filter(x => x.course === c && x.kind === "exam")
+      .sort((a, b) => a.year - b.year || String(a.term).localeCompare(String(b.term)));
+    const sets = EXAMS.filter(x => x.course === c && x.kind === "problemset");
+    if (!sits.length && !sets.length) return;
+    h += `<h2 class="fieldhead">${esc(c)}　<span class="stat">試験 ${sits.length} 回${sets.length ? "／問題集 " + sets.length + " 件" : ""}</span></h2>`;
+    if (sits.length) {
+      const topics = [];
+      sits.forEach(x => x.items.forEach(i => { if (topics.indexOf(i.topic) < 0) topics.push(i.topic); }));
+      const order = examStats(c).map(s => s.topic).filter(t => topics.indexOf(t) >= 0);
+      h += `<table class="mxtbl"><tr><th>トピック</th>` +
+        sits.map(x => `<th class="yr">${x.year}<br>${esc(x.term)}</th>`).join("") + `<th class="yr">回数</th></tr>`;
+      order.forEach(t => {
+        const st = examStats(c).find(s => s.topic === t);
+        h += `<tr><td class="topic">${esc(t)}${st && st.pattern ? `<span class="pat">${esc(st.pattern)}</span>` : ""}</td>`;
+        sits.forEach(x => {
+          const it = x.items.find(i => i.topic === t);
+          h += it ? `<td class="hit"><a href="${localUrl(x.path)}#page=${x.page}" target="_blank" title="${esc(it.q)}">○</a></td>` : `<td></td>`;
+        });
+        h += `<td class="hit">${st ? st.n : 0}</td></tr>`;
+      });
+      h += `</table>`;
+      const st = examStats(c);
+      h += `<div class="rank">` + st.slice(0, 10).map((x, i) =>
+        `<div><span class="n">${i + 1}位</span>${esc(x.topic)}　<span class="stat">${x.n}回：${esc(x.where.join("・"))}</span>` +
+        (x.pattern ? `<span class="pat">定石 ${esc(x.pattern)}</span>` : "") +
+        (x.shelfId && byShelf(x.shelfId) ? `<button class="linkbtn" data-goshelf="${esc(x.shelfId)}">📕 ${esc(byShelf(x.shelfId).title)}</button>` : "") +
+        `</div>`).join("") + `</div>`;
+    }
+    if (sets.length) {
+      h += `<div class="stat" style="margin-top:8px">関連する問題集：` + sets.map(x =>
+        `<a href="${localUrl(x.path)}" target="_blank">${esc(x.file)}（${x.items.length}群）↗</a>`).join("・") + `</div>`;
+    }
+  });
+  body.innerHTML = h || `<p class="stat">exams.js に過去問が登録されていません。</p>`;
+  body.querySelectorAll("[data-goshelf]").forEach(b => b.onclick = () => { goTab("shelf"); showShelf(b.dataset.goshelf); });
+}
+function initExam(){
+  const cs = [...new Set(EXAMS.map(x => x.course))];
+  document.getElementById("exCourse").innerHTML =
+    `<option value="">すべての科目</option>` + cs.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  document.getElementById("exCourse").onchange = renderExam;
+  document.getElementById("exOrder").onclick = () => {
+    const c = document.getElementById("exCourse").value;
+    if (!c) { toast("先に科目を選んでください"); return; }
+    gotoOrder("exam", { course:c });
+  };
+}
+
+/* ---------- 一括開閉 ---------- */
+document.querySelectorAll(".toolbar button[data-all]").forEach(btn => btn.addEventListener("click", () => {
+  const open = !!btn.dataset.open;
+  document.querySelectorAll("#" + btn.dataset.all + " details").forEach(d => { d.open = open; });
+  if (open) renderMathAll();
+}));
+
+/* ---------- 情報・selfTest ---------- */
+function renderStats(){
+  const n = META.books.length;
+  const searchable = META.books.filter(b => b.quality === "full").length;
+  const lowq = META.books.filter(b => b.quality === "low").length;
+  const locked = META.books.filter(b => b.quality === "locked" || b.quality === "error").length;
+  const bound = SHELF.filter(b => b.pdf).length;
+  const undone = INBOX.filter(f => !ibMeta(f.file).done).length;
+  const sits = EXAMS.filter(x => x.kind === "exam").length;
+  document.getElementById("stats").innerHTML =
+    `索引生成: ${esc(META.generated)}｜総資料 ${n} 本（全文検索可 ${searchable}／数式・英数字のみ ${lowq}／検索不可・保護 ${locked}）<br>` +
+    `本棚 ${SHELF.length} 冊（製本済み ${bound}／未製本 ${SHELF.length - bound}）｜過去問 ${sits} 回分｜疑問ストック 未処理 ${undone} 件｜同義語 ${SYN.length} 組<br>` +
+    `新しいPDFを追加したら「索引を更新して」、受信箱に写真を入れたら「受信箱を読み直して」と Claude Code に依頼してください。<br>` +
+    `注文票 → 指示をコピー（または注文書を書き出して「たまった注文を処理して」）→ 構成案を議論 → 表紙付きPDFが本棚に並びます。`;
+}
+async function selfTest(){
+  const R = [];
+  const t = (name, cond) => R.push([name, !!cond]);
+
+  /* 索引・資料 */
+  t("meta.js 読み込み（100本以上）", META.books.length >= 100);
+  t("curated.js 読み込み（50件以上）", Object.keys(CUR.fields).length >= 50);
+  t("目次の全ファイルがmetaに存在", CUR.toc.every(x => byFile(x.file)));
+  const smp = byFile("解析力学５.pdf");
+  t("URLエンコード（日本語ファイル名）", smp && fileUrl(smp, 5).includes(encodeURIComponent("解析力学５.pdf")) && fileUrl(smp, 5).endsWith("#page=5"));
+  t("分野割当（問題/解析力学→解析力学）", (() => { const b = byFile("解析力学問題.pdf"); return b && bookField(b) === "解析力学"; })());
+  t("PDF_BASE に本棚・過去問が定義済み", !!PDF_BASE["本棚"] && !!PDF_BASE["過去問"]);
+  await loadTexts();
+  const loaded = Object.keys(window.DB_TEXT || {}).length;
+  const expected = META.books.filter(b => b.quality === "full" || b.quality === "low").length;
+  t(`本文ロード ${loaded}/${expected}`, loaded === expected);
+  t("頁数整合（解析力学５）", smp && (window.DB_TEXT[smp.id] || []).length === smp.pages);
+  t("検索『ネーター』ヒット", smp && normPages(smp) && normPages(smp).some(p => p.includes("ねーたー".normalize("NFKC")) || p.includes("ネーター".toLowerCase())));
+  t("同義語展開（オイラーラグランジュ→複数語）", expandTermForTest("オイラーラグランジュ").length >= 3);
+  t("入れ子: 単元カード内に全資料カード", document.querySelectorAll("#booklist details.fieldcard details.bookcard").length === META.books.length);
+  t("入れ子: 単元カードが複数", document.querySelectorAll("#booklist > details.fieldcard").length >= 5);
+  t("タブ: 6枚が定義とDOMで一致", TABS.length === 6 &&
+      document.querySelectorAll("nav button").length === 6 &&
+      TABS.every(x => !!document.getElementById("tab-" + x.id)));
+
+  /* 本棚 */
+  t("shelf: 全冊に必須キー", SHELF.length > 0 && SHELF.every(b => b.id && b.title && b.field && b.kind && b.created && b.updated));
+  t("shelf: id 重複なし", new Set(SHELF.map(b => b.id)).size === SHELF.length);
+  t("shelf: kind は4種のいずれか", SHELF.every(b => ["note","print","solution","catalog"].indexOf(b.kind) >= 0));
+  t("shelf: pdf は絶対パスか null", SHELF.every(b => b.pdf === null || /^[A-Za-z]:\\/.test(b.pdf)));
+  t("shelf: history の type が既定値", SHELF.every(b => Array.isArray(b.history) &&
+      b.history.every(h => ["created","revised","imported"].indexOf(h.type) >= 0)));
+  t("shelf: legacyNote は notes.js に実在", SHELF.every(b => !b.legacyNote || NOTES.some(n => n.id === b.legacyNote)));
+  t("shelf: 未製本は legacyNote を持つ", SHELF.every(b => b.pdf !== null || !!b.legacyNote));
+  t("移行完了: 未製本の冊が無い", SHELF.every(b => !!b.pdf));
+  t("移行完了: 旧ノート8本がすべて製本済みで本棚にある", NOTES.every(n =>
+      SHELF.some(b => b.id === n.id && b.pdf && b.legacyNote === null)));
+  t("本棚: 製本済みの冊は tex と outline を持つ", SHELF.filter(b => b.kind === "note").every(b =>
+      !!b.tex && Array.isArray(b.outline) && b.outline.length > 0 &&
+      b.outline.every(o => o.n && o.h)));
+  t("本棚: 製本済みノートの典拠が meta.js に実在", SHELF.filter(b => b.kind === "note").every(b =>
+      Array.isArray(b.sources) && b.sources.length > 0 && b.sources.every(s => !!byFile(s.file))));
+  t("本棚: 演習の出典が meta.js に実在", SHELF.every(b =>
+      (b.exercises || []).every(ex => !!byFile(ex.file))));
+  t("本棚: 表紙が全冊ぶん描画される", document.querySelectorAll("#shelfGrid .cover").length === SHELF.length);
+  t("本棚: 分野の棚が分野数ぶん並ぶ", document.querySelectorAll("#shelfGrid > details.shelffield").length === shelfFields().length);
+  t("本棚: 二階層（棚の中に表紙）", document.querySelectorAll("#shelfGrid details.shelffield .shelf-grid .cover").length === SHELF.length);
+  t("本棚: 各棚の冊数が分野の冊数と一致", [...document.querySelectorAll("#shelfGrid > details.shelffield")].every(d =>
+      d.querySelectorAll(".cover").length === SHELF.filter(b => b.field === d.dataset.field).length));
+  t("本棚: 全冊で分野色が引ける", SHELF.every(b => typeof fieldHue(b.field) === "number"));
+  t("本棚: 未製本カバーに帯が出る", document.querySelectorAll("#shelfGrid .cover-wip").length === SHELF.filter(b => !b.pdf).length);
+  t("本棚: 分野フィルタの合計＝総冊数", (() => {
+      const sum = shelfFields().reduce((s, f) => s + SHELF.filter(b => b.field === f).length, 0);
+      return sum === SHELF.length; })());
+  t("本棚: 種別フィルタの合計＝総冊数", (() => {
+      const ks = [...new Set(SHELF.map(b => b.kind))];
+      return ks.reduce((s, k) => s + SHELF.filter(b => b.kind === k).length, 0) === SHELF.length; })());
+  t("本棚: 詳細を開くと改訂ボタンが出る（副作用なし）", (() => {
+      const before = document.getElementById("shelfDetail").innerHTML;
+      showShelf(SHELF[0].id);
+      const okBtn = !!document.querySelector("#shelfDetail [data-rev]");
+      const okTitle = document.getElementById("shelfDetail").textContent.includes(SHELF[0].title);
+      document.getElementById("shelfDetail").innerHTML = before;
+      document.querySelectorAll("#shelfGrid .cover").forEach(el => el.classList.remove("on"));
+      return okBtn && okTitle; })());
+  t("本棚: 長いタイトルでも表紙が生成される", (() => {
+      const h = coverHtml({ id:"x", title:"あ".repeat(60), field:"未知分野", kind:"note", pdf:null, version:1, updated:"2026-08-12" });
+      return h.indexOf("cover-title") > 0 && h.indexOf("cover-wip") > 0; })());
+  t("本棚: 移行中ノートの本文が描画できる", (() => {
+      const b = SHELF.find(x => x.legacyNote); if (!b) return true;
+      const n = legacyNoteOf(b);
+      return !!n && renderBlocks((n.sections || [])[0] ? n.sections[0].blocks : []).length > 0; })());
+
+  /* 注文票 */
+  t("注文票: 7パターンが定義とDOMで一致", Object.keys(ORDER_PATTERNS).length === 7 &&
+      document.querySelectorAll("#patRow [data-pat]").length === 7);
+  t("注文票: 全パターンに build 関数と既定値", Object.keys(ORDER_PATTERNS).every(p =>
+      typeof ORDER_PATTERNS[p].build === "function" &&
+      SPEC_FIELDS.every(sf => !!ORDER_PATTERNS[p].defaults[sf.key])));
+  t("注文票: spec 4軸＋図の量が選べる", SPEC_FIELDS.length === 5 &&
+      document.querySelectorAll("#ordForm [data-spec]").length ===
+      SPEC_FIELDS.reduce((s, sf) => s + sf.opts.length, 0));
+  t("注文票: 必須欄が空なら missing が出る", missingOrder({ pattern:"theme", topic:"" }).length === 1);
+  t("注文票: 依頼書に構成案ゲートが入る", buildOrder({ pattern:"theme", topic:"テスト", field:"", spec:ORDER_PATTERNS.theme.defaults, note:"" })
+      .includes("いきなり本文を書かず"));
+  t("注文票: 依頼書に仕様が展開される", (() => {
+      const s = buildOrder({ pattern:"theme", topic:"テスト", field:"", spec:{ density:"full", template:"exam", exercises:"none", layout:"math", figures:"few", pages:20 }, note:"" });
+      return s.includes("完全証明") && s.includes("試験対策型") && s.includes("約 20 頁"); })());
+  t("注文票: 備考が依頼書に入る", buildOrder({ pattern:"theme", topic:"T", spec:ORDER_PATTERNS.theme.defaults, note:"ここが備考" }).includes("ここが備考"));
+  t("注文票: 解答は定石カタログを引かせる", buildOrder({ pattern:"solution", book:"X.pdf", range:"問1", spec:ORDER_PATTERNS.solution.defaults, note:"" })
+      .includes("解法定石カタログ"));
+  t("注文票: 改訂は最新一本上書きを指示", (() => {
+      const s = buildOrder({ pattern:"revise", target:SHELF[0].id, revisions:"§3 詳しく", spec:ORDER_PATTERNS.revise.defaults, note:"" });
+      return s.includes("最新一本を上書き") && s.includes(SHELF[0].title); })());
+  t("注文票: 試験対策に頻出順と出題実績が入る", (() => {
+      const c = EXAMS.filter(x => x.kind === "exam")[0].course;
+      const s = buildOrder({ pattern:"exam", course:c, scope:"", spec:ORDER_PATTERNS.exam.defaults, note:"" });
+      return s.includes("過去問の傾向") && s.includes("出題実績"); })());
+  t("注文票: 画像パターンに疑問が並ぶ", buildOrder({ pattern:"image", topic:"T", spec:ORDER_PATTERNS.image.defaults, note:"",
+      questions:[{ file:"IMG_1.JPG", path:"C:\\a\\IMG_1.JPG", memo:"ここが不明" }] }).includes("ここが不明"));
+  t("注文票: 執筆スタイル台帳を参照させる", buildOrder({ pattern:"theme", topic:"T", spec:ORDER_PATTERNS.theme.defaults, note:"" }).includes("執筆スタイル台帳"));
+  t("注文票: 資料セレクトに全資料", (() => {
+      setPattern("book");
+      const n2 = document.querySelectorAll("#of-book option[value]:not([value=''])").length;
+      setPattern("theme");
+      return n2 === META.books.length; })());
+  t("注文票: 旧形式(kind)の互換変換", normalizeReq({ kind:"solution", topic:"X.pdf" }).book === "X.pdf" &&
+      normalizeReq({ kind:"summary", topic:"旧" }).pattern === "theme");
+  t("注文票: 旧依頼も指示文にできる", reqInstruction({ kind:"summary", topic:"旧形式テスト" }).includes("旧形式テスト"));
+  t("注文票: localStorage 読み書き（副作用なし）", (() => {
+      const before = JSON.stringify(loadReqs());
+      const okw = saveReqs(loadReqs());
+      return okw && JSON.stringify(loadReqs()) === before; })());
+  t("注文票: 書き出しJSONが version:2／orders／instruction入り", (() => {
+      const p = orderPayload([{ id:1, created:"2026-08-12", pattern:"theme", topic:"書き出し検証",
+                                spec:ORDER_PATTERNS.theme.defaults, note:"" }]);
+      return p.version === 2 && p.type === "order" && Array.isArray(p.orders) && p.orders.length === 1 &&
+             p.orders[0].pattern === "theme" && p.orders[0].instruction.includes("書き出し検証") &&
+             p.orders[0].instruction.includes("いきなり本文を書かず") &&
+             JSON.parse(JSON.stringify(p)).orders[0].spec.density === "full"; })());
+  t("注文票: 納品済み判定（未製本は未処理）", (() => {
+      const b = SHELF.find(x => !x.pdf);
+      return !b || !reqDone({ pattern:"theme", title:b.title }); })());
+
+  /* 疑問ストック */
+  t("疑問ストック: inbox.js の必須キー", INBOX.length > 0 && INBOX.every(f => f.file && f.path && f.ext && f.kind && f.mtime));
+  t("疑問ストック: thumb は data URI か null", INBOX.every(f => f.thumb === null || /^data:image\/jpeg;base64,/.test(f.thumb)));
+  t("疑問ストック: jpg/png にサムネがある", INBOX.filter(f => ["jpg","jpeg","png"].indexOf(f.ext) >= 0).every(f => !!f.thumb));
+  t("疑問ストック: カードが描画される", document.querySelectorAll("#inboxGrid .qcard").length ===
+      INBOX.filter(f => !ibMeta(f.file).done).length);
+  t("疑問ストック: メモ保存→削除で元に戻る（副作用なし）", (() => {
+      const f = INBOX[0]; if (!f) return true;
+      const before = JSON.stringify(INBOX_META);
+      setIbMeta(f.file, { memo:"__test__" });
+      const saved = ibMeta(f.file).memo === "__test__";
+      setIbMeta(f.file, { memo:"" });
+      return saved && JSON.stringify(INBOX_META) === before; })());
+
+  /* 試験対策 */
+  t("exams: 必須キー", EXAMS.length > 0 && EXAMS.every(x => x.course && x.year && x.term && x.kind && x.file && x.path && x.page && Array.isArray(x.items)));
+  t("exams: items の必須キーと level", EXAMS.every(x => x.items.every(i =>
+      i.q && i.topic && i.field && Array.isArray(i.subtopics) && ["基礎","標準","発展"].indexOf(i.level) >= 0)));
+  t("exams: pattern は定石番号形式か null", EXAMS.every(x => x.items.every(i => i.pattern === null || /^[A-Z]{2}-\d{2}$/.test(i.pattern))));
+  t("exams: shelfId は本棚に実在するか null", EXAMS.every(x => x.items.every(i => i.shelfId === null || !!byShelf(i.shelfId))));
+  t("exams: page <= pages", EXAMS.every(x => x.page <= x.pages));
+  t("試験対策: 頻出集計が出題回数と一致", (() => {
+      const st = examStats("");
+      const total = EXAMS.filter(x => x.kind === "exam").reduce((s, x) => s + x.items.length, 0);
+      return st.reduce((s, x) => s + x.n, 0) === total && st.every(x => x.n === x.where.length); })());
+  t("試験対策: 複数年で出た頻出トピックがある", examStats("").some(x => x.n >= 2));
+  t("試験対策: 問題集は集計から除外", (() => {
+      const ps = EXAMS.filter(x => x.kind === "problemset");
+      if (!ps.length) return true;
+      const topicsInSet = ps[0].items.map(i => i.topic);
+      const st = examStats(ps[0].course);
+      const onlyInSet = topicsInSet.filter(tp => !EXAMS.some(x => x.kind === "exam" && x.course === ps[0].course && x.items.some(i => i.topic === tp)));
+      return onlyInSet.every(tp => !st.some(s => s.topic === tp)); })());
+  t("試験対策: マトリクスの○数＝出題数", (() => {
+      const cells = document.querySelectorAll("#examBody .mxtbl td.hit a").length;
+      const total = EXAMS.filter(x => x.kind === "exam").reduce((s, x) => s + new Set(x.items.map(i => i.topic)).size, 0);
+      return cells === total; })());
+
+  /* 描画 */
+  t("ブロック描画: 4種すべて", (() => {
+      const h = renderBlocks(["段落 $x$", { m:"E=mc^2" }, { ul:["項目"] }, { box:"注意", body:["中身"] }]);
+      return h.includes("<p>") && h.includes("mthd") && h.includes("pts") && h.includes("kbox"); })());
+  t("localUrl 変換", localUrl("C:\\Users\\sunoc\\テスト\\解答.pdf") === "file:///C:/Users/sunoc/" + encodeURIComponent("テスト") + "/" + encodeURIComponent("解答.pdf"));
+  t("付属資料: スキーマと出典整合", typeof ATTACH === "object" &&
+      Object.keys(ATTACH).every(f => byFile(f) && ATTACH[f].every(a => a.title && a.path)));
+
+  const okAll = R.every(x => x[1]);
+  document.getElementById("selftest").innerHTML =
+    R.map(([n2, ok]) => `<span class="${ok ? "pass" : "fail"}">${ok ? "PASS" : "FAIL"}</span> ${esc(n2)}`).join("\n") +
+    `\n\nSELFTEST ${okAll ? "ALL-PASS" : "FAILED"} (${R.filter(x => x[1]).length}/${R.length})`;
+}
+function expandTermForTest(w){
+  const t2 = norm(w); const set = new Set([t2]);
+  for (const g of SYN) if (g.some(a => norm(a) === t2)) g.forEach(a => set.add(norm(a)));
+  return [...set];
+}
+
+/* ---------- 初期化（順序に依存: renderBooks が分野selectを埋める） ---------- */
+renderBooks();
+initShelfFilters();
+renderShelf();
+renderInbox();
+renderPatRow();
+setPattern("theme");
+renderReqs();
+initExam();
+renderExam();
+renderStats();
+selfTest();
+</script>
+
+<script>
+/* =========================================================================
+   スマホ対応（2026-08-24 追加）
+
+   PCでは data/ フォルダが隣にあるので、これまでどおり <script src="data/..."> で
+   読み込まれる。スマホではネット上に資料データを置けない（教科書本文のため）ので、
+   一度だけ取り込んだデータを IndexedDB に置き、sw.js が data/... の要求に対して
+   その中身を返す。つまりアプリ側の検索処理は一切変えずに済む。
+   ========================================================================= */
+"use strict";
+
+var SN_DB = "shiryo-navi", SN_STORE = "files", SN_DB_VERSION = 1;
+var SN_BUNDLE_FORMAT = "shiryo-navi-bundle";
+
+function snEl(id){ return document.getElementById(id); }
+function snEsc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+  });
+}
+
+/* ---------- IndexedDB（取り込んだ資料データの置き場） ---------- */
+var _snDb = null;
+function snDb(){
+  if (_snDb) return Promise.resolve(_snDb);
+  return new Promise(function(res, rej){
+    if (!window.indexedDB) { rej(new Error("この環境では資料データを保存できません")); return; }
+    var req;
+    try { req = indexedDB.open(SN_DB, SN_DB_VERSION); }
+    catch (e) { rej(e); return; }
+    req.onupgradeneeded = function(){
+      var db = req.result;
+      if (!db.objectStoreNames.contains(SN_STORE)) db.createObjectStore(SN_STORE, { keyPath: "path" });
+    };
+    req.onsuccess = function(){ _snDb = req.result; res(_snDb); };
+    req.onerror   = function(){ rej(req.error || new Error("保存領域を開けませんでした")); };
+  });
+}
+function snTx(mode, fn){
+  return snDb().then(function(db){
+    return new Promise(function(res, rej){
+      var t = db.transaction(SN_STORE, mode), st = t.objectStore(SN_STORE), out = fn(st);
+      t.oncomplete = function(){
+        if (out && out.__req) { var v = out.__req.result; res(v === undefined ? null : v); }
+        else res(out);
+      };
+      t.onerror  = function(){ rej(t.error); };
+      t.onabort  = function(){ rej(t.error || new Error("書き込みが中断されました")); };
+    });
+  });
+}
+function snCount(){ return snTx("readonly", function(st){ return { __req: st.count() }; }); }
+function snGetInfo(){ return snTx("readonly", function(st){ return { __req: st.get("__info__") }; }); }
+function snClear(){ return snTx("readwrite", function(st){ st.clear(); return true; }); }
+function snPutMany(entries){
+  return snTx("readwrite", function(st){
+    for (var i = 0; i < entries.length; i++) st.put(entries[i]);
+    return entries.length;
+  });
+}
+
+/* ---------- 取り込み ---------- */
+function snReadFileText(file){
+  if (file.text) return file.text();
+  return new Promise(function(res, rej){
+    var fr = new FileReader();
+    fr.onload  = function(){ res(fr.result); };
+    fr.onerror = function(){ rej(fr.error || new Error("ファイルを読めませんでした")); };
+    fr.readAsText(file);
+  });
+}
+
+/** 取り込んでよいデータかを判定する（純粋な関数。selfTest対象） */
+function snValidateBundle(bundle){
+  if (!bundle || typeof bundle !== "object") return "ファイルの中身を読み取れませんでした";
+  if (bundle.format !== SN_BUNDLE_FORMAT) return "資料検索のデータファイルではないようです";
+  if (!bundle.files || typeof bundle.files !== "object") return "データが入っていません";
+  if (!Object.keys(bundle.files).length) return "データが空です";
+  if (!bundle.files["data/meta.js"]) return "資料の目録（meta.js）が入っていません";
+  return null;   // 問題なし
+}
+
+function snImportBundle(file, onProgress){
+  return snReadFileText(file).then(function(text){
+    var bundle;
+    try { bundle = JSON.parse(text); }
+    catch (e) { throw new Error("ファイルの中身を読み取れませんでした（JSONとして壊れています）"); }
+    var bad = snValidateBundle(bundle);
+    if (bad) throw new Error(bad);
+    var paths = Object.keys(bundle.files);
+
+    return snClear().then(function(){
+      // 一度に全部書くと進み具合が見えないので、少しずつ書き込む
+      var CHUNK = 20, i = 0;
+      function step(){
+        if (i >= paths.length) return Promise.resolve();
+        var slice = paths.slice(i, i + CHUNK).map(function(p){
+          return { path: p, body: bundle.files[p] };
+        });
+        return snPutMany(slice).then(function(){
+          i += CHUNK;
+          if (onProgress) onProgress(Math.min(i, paths.length), paths.length);
+          return step();
+        });
+      }
+      return step();
+    }).then(function(){
+      return snPutMany([{
+        path: "__info__",
+        body: "",
+        generated: bundle.generated || "",
+        fileCount: paths.length,
+        importedAt: new Date().toISOString()
+      }]);
+    }).then(function(){ return paths.length; });
+  });
+}
+
+/* ---------- 取り込み画面 ---------- */
+function snGateOpen(mode){
+  var gate = snEl("dataGate");
+  if (!gate) return;
+  var closeBtn = snEl("gateClose");
+  if (mode === "update") {
+    snEl("gateTitle").textContent = "資料データを入れ替える";
+    snEl("gateBody").innerHTML =
+      "<p>新しく書き出した <code>資料検索データ.json</code> を選ぶと、いまの資料データを新しいものに置き換えます。" +
+      "注文票と受信箱の状態は消えません。</p>";
+    closeBtn.style.display = "";
+  } else {
+    closeBtn.style.display = "none";
+  }
+  gate.classList.add("on");
+  gate.setAttribute("aria-hidden", "false");
+}
+function snGateClose(){
+  var gate = snEl("dataGate");
+  if (!gate) return;
+  gate.classList.remove("on");
+  gate.setAttribute("aria-hidden", "true");
+}
+
+function snBindGate(){
+  var pick = snEl("gatePick"), input = snEl("gateFile"),
+      bar = snEl("gateBar"), msg = snEl("gateMsg"), closeBtn = snEl("gateClose");
+  if (!pick || !input) return;
+
+  pick.onclick = function(){ input.value = ""; input.click(); };
+  closeBtn.onclick = snGateClose;
+
+  input.onchange = function(){
+    var file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    pick.disabled = true;
+    msg.className = "msg";
+    msg.textContent = "読み込んでいます…（13MBほどあるので少し待ちます）";
+    bar.style.width = "2%";
+
+    snImportBundle(file, function(done, total){
+      bar.style.width = Math.round(done / total * 100) + "%";
+      msg.textContent = "保存しています… " + done + " / " + total;
+    }).then(function(n){
+      bar.style.width = "100%";
+      msg.textContent = n + " 件を取り込みました。画面を読み込み直します…";
+      setTimeout(function(){ location.reload(); }, 900);
+    }).catch(function(e){
+      pick.disabled = false;
+      bar.style.width = "0%";
+      msg.className = "msg err";
+      msg.textContent = "取り込めませんでした：" + (e && e.message ? e.message : String(e));
+    });
+  };
+}
+
+/* ---------- 起動時の判定 ---------- */
+var SN_RELOAD_FLAG = "shiryoNavi.swReloaded";
+
+function snBoot(){
+  snBindGate();
+  var hasData = !!(window.DB_META && window.DB_META.books && window.DB_META.books.length);
+  var isLocal = location.protocol === "file:";
+
+  if (hasData) {
+    try { sessionStorage.removeItem(SN_RELOAD_FLAG); } catch (e) {}
+    snRenderDataInfo();
+    return;
+  }
+  if (isLocal) {
+    // PCでファイルを直接開いた場合は data/ フォルダが隣にあるはず。無ければ配置の問題。
+    snRenderDataInfo();
+    return;
+  }
+
+  // ネット経由で開いていてデータが無い：取り込み済みなら読み込み直し、未取り込みなら取り込み画面
+  snCount().then(function(n){
+    if (n > 1 && !navigator.serviceWorker.controller) {
+      // データはあるが、まだ配信役（sw.js）が動いていないだけ。一度だけ読み込み直す。
+      var already = false;
+      try { already = sessionStorage.getItem(SN_RELOAD_FLAG) === "1"; } catch (e) {}
+      if (!already) {
+        try { sessionStorage.setItem(SN_RELOAD_FLAG, "1"); } catch (e) {}
+        setTimeout(function(){ location.reload(); }, 600);
+        return;
+      }
+    }
+    snGateOpen("first");
+    snRenderDataInfo();
+  }).catch(function(){
+    snGateOpen("first");
+  });
+}
+
+/* ---------- 情報タブに「資料データ」の状態を出す ---------- */
+function snRenderDataInfo(){
+  var host = document.getElementById("tab-info");
+  if (!host || document.getElementById("snDataBox")) return;
+  var box = document.createElement("section");
+  box.id = "snDataBox";
+  box.style.cssText = "margin-top:18px";
+  box.innerHTML =
+    '<h2 class="fieldhead">資料データ</h2>' +
+    '<div id="snDataMsg" class="datanote">確認中…</div>' +
+    '<p class="datanote" id="snDataHint"></p>';
+  host.appendChild(box);
+
+  var msg = document.getElementById("snDataMsg"), hint = document.getElementById("snDataHint");
+  var books = (window.DB_META && window.DB_META.books) ? window.DB_META.books.length : 0;
+
+  if (location.protocol === "file:") {
+    msg.innerHTML = "この端末では <code>data</code> フォルダから直接読み込んでいます（資料 " + books + " 冊）。";
+    hint.textContent = "スマホで使うためのデータファイルは、同じフォルダの「資料検索データ書き出し.ps1」で作れます。";
+    return;
+  }
+
+  snGetInfo().then(function(info){
+    if (info) {
+      msg.innerHTML = "取り込み済み：資料 " + books + " 冊（データ作成 " + snEsc(info.generated || "不明") +
+                      "／取り込み " + snEsc(String(info.importedAt || "").slice(0, 10)) + "）";
+    } else {
+      msg.textContent = "資料データはまだ取り込まれていません。";
+    }
+    hint.innerHTML = '<button class="gbtn sub" style="width:auto;padding:8px 14px;min-height:0" id="snUpdateBtn">資料データを取り込む／入れ替える</button>';
+    var b = document.getElementById("snUpdateBtn");
+    if (b) b.onclick = function(){ snGateOpen("update"); };
+  }).catch(function(e){
+    msg.textContent = "保存領域を確認できません：" + (e && e.message ? e.message : String(e));
+  });
+}
+
+/* ---------- PDFを開くリンク（スマホでは開けないので案内する） ---------- */
+function snGuardLocalLinks(){
+  if (location.protocol === "file:") return;
+  document.addEventListener("click", function(ev){
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href^="file:"]') : null;
+    if (!a) return;
+    ev.preventDefault();
+    if (typeof toast === "function") toast("PDFそのものはPCの中にあるため、この端末では開けません");
+  }, true);
+}
+
+/* ---------- オフライン用の準備 ---------- */
+function snRegisterServiceWorker(){
+  if (!("serviceWorker" in navigator)) return;
+  if (location.protocol !== "http:" && location.protocol !== "https:") return;
+  navigator.serviceWorker.register("sw.js").catch(function(e){
+    console.info("オフライン用の準備は使えません:", e && e.message ? e.message : e);
+  });
+}
+function snIsStandalone(){
+  return !!(window.navigator.standalone === true ||
+            (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches));
+}
+
+/* ---------- 追加のselfTest（既存の結果に足す） ---------- */
+function snSelfTest(){
+  var R = [];
+  function t(name, cond){ R.push([name, !!cond]); }
+
+  t("スマホ: マニフェストの指定がある", !!document.querySelector('link[rel="manifest"]'));
+  t("スマホ: ホーム画面アイコンの指定がある", !!document.querySelector('link[rel="apple-touch-icon"]'));
+  t("スマホ: アプリ表示の指定がある", !!document.querySelector('meta[name="apple-mobile-web-app-capable"]'));
+  t("スマホ: 取り込み画面の部品がそろっている",
+    !!(snEl("dataGate") && snEl("gateFile") && snEl("gatePick") && snEl("gateBar") && snEl("gateMsg")));
+  t("スマホ: 起動状態を判定できる", typeof snIsStandalone() === "boolean");
+  t("スマホ: 保存領域の関数がある", typeof snDb === "function" && typeof snImportBundle === "function");
+  t("スマホ: 保存キーが他アプリと衝突しない", SN_DB === "shiryo-navi" && INBOX_KEY.indexOf("shiryoNavi.") === 0);
+  t("スマホ: 正しいデータを受け入れる",
+    snValidateBundle({ format: SN_BUNDLE_FORMAT, files: { "data/meta.js": "x" } }) === null);
+  t("スマホ: 別形式のファイルを弾く",
+    snValidateBundle({ format: "other", files: { "data/meta.js": "x" } }) !== null);
+  t("スマホ: 空のデータを弾く",
+    snValidateBundle({ format: SN_BUNDLE_FORMAT, files: {} }) !== null);
+  t("スマホ: 目録の無いデータを弾く",
+    snValidateBundle({ format: SN_BUNDLE_FORMAT, files: { "data/text/a.js": "x" } }) !== null);
+  t("スマホ: 壊れた入力を弾く",
+    snValidateBundle(null) !== null && snValidateBundle("abc") !== null);
+
+  // 本体の selfTest は非同期で後から表示欄を書き換えるため、こちらは専用の欄に出す
+  var host = document.getElementById("selftest-mobile");
+  if (host) {
+    var ok = R.every(function(p){ return p[1]; });
+    host.innerHTML = R.map(function(p){
+      return '<span class="' + (p[1] ? "pass" : "fail") + '">' + (p[1] ? "PASS" : "FAIL") + "</span> " + snEsc(p[0]);
+    }).join("\n") +
+    "\n\nSELFTEST-MOBILE " + (ok ? "ALL-PASS" : "FAILED") + " (" +
+    R.filter(function(p){ return p[1]; }).length + "/" + R.length + ")";
+  }
+  window.__snSelftest = { pass: R.every(function(p){ return p[1]; }), checks: R.length, results: R };
+  return window.__snSelftest;
+}
+
+/* ---------- 起動 ---------- */
+snGuardLocalLinks();
+snRegisterServiceWorker();
+snBoot();
+snSelfTest();
+window.snImportBundle = snImportBundle;
+window.snIsStandalone = snIsStandalone;
+window.snCount = snCount;
+window.snClear = snClear;
+window.snGateOpen = snGateOpen;
+</script>
+</body>
+</html>
