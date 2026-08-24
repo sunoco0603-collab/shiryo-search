@@ -49,6 +49,38 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 #dataGate .err { color: #dc2626; font-weight: 700; }
 .datanote { font-size: .85rem; color: #6b7280; margin: 6px 0 0; }
 
+/* ===== PDFビューア ===== */
+#pdfView {
+  position: fixed; inset: 0; z-index: 950; display: none;
+  flex-direction: column; background: #2b2f36;
+}
+#pdfView.on { display: flex; }
+#pdfView .pvbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+  padding: calc(8px + env(safe-area-inset-top)) 10px 8px;
+  background: #1f232a; color: #eef1f5; border-bottom: 1px solid #3a4150;
+}
+#pdfView .pvbar .ttl {
+  flex: 1 1 auto; min-width: 0; font-size: .86rem; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#pdfView .pvbtn {
+  appearance: none; border: 1px solid #4b5563; background: #2b313b; color: #eef1f5;
+  border-radius: 8px; padding: 7px 11px; font-size: .85rem; font-family: inherit;
+  cursor: pointer; min-height: 38px; white-space: nowrap;
+}
+#pdfView .pvbtn:disabled { opacity: .45; }
+#pvCanvasWrap { flex: 1 1 auto; overflow: auto; -webkit-overflow-scrolling: touch; text-align: center; padding: 8px 4px; }
+#pvCanvas { background: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.5); max-width: none; }
+#pdfView .pvfoot {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  background: #1f232a; color: #eef1f5; border-top: 1px solid #3a4150;
+}
+#pvPage { font-size: .85rem; min-width: 84px; text-align: center; }
+#pvMsg { color: #eef1f5; text-align: center; padding: 24px 16px; font-size: .9rem; }
+.pdfbadge { display: inline-block; font-size: .72rem; padding: 1px 7px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; margin-left: 6px; }
+
 :root {
   --bg:#f7f7f9; --panel:#ffffff; --ink:#1c1e21; --sub:#6b7280; --line:#e3e5e8;
   --acc:#2563eb; --acc-ink:#ffffff; --mark:#fde68a; --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
@@ -314,6 +346,22 @@ details.shelffield > .grp { padding:2px 0 10px 6px; }
     <div id="selftest-mobile" style="margin-top:10px"></div>
   </section>
 </main>
+
+<!-- PDFビューア（取り込んだPDFを該当ページから開く） -->
+<div id="pdfView" aria-hidden="true">
+  <div class="pvbar">
+    <span class="ttl" id="pvTitle">PDF</span>
+    <button class="pvbtn" id="pvZoomOut" title="縮小">－</button>
+    <button class="pvbtn" id="pvZoomIn" title="拡大">＋</button>
+    <button class="pvbtn" id="pvClose">閉じる</button>
+  </div>
+  <div id="pvCanvasWrap"><canvas id="pvCanvas"></canvas><div id="pvMsg"></div></div>
+  <div class="pvfoot">
+    <button class="pvbtn" id="pvPrev">← 前</button>
+    <span id="pvPage">— / —</span>
+    <button class="pvbtn" id="pvNext">次 →</button>
+  </div>
+</div>
 
 <!-- 資料データの取り込み画面（スマホ用。データが入っていないときだけ出る） -->
 <div id="dataGate" aria-hidden="true">
@@ -1397,8 +1445,11 @@ selfTest();
    ========================================================================= */
 "use strict";
 
-var SN_DB = "shiryo-navi", SN_STORE = "files", SN_DB_VERSION = 1;
+var SN_DB = "shiryo-navi", SN_STORE = "files", SN_PDF_STORE = "pdfs", SN_DB_VERSION = 2;
 var SN_BUNDLE_FORMAT = "shiryo-navi-bundle";
+/* PDF.js（数式や図をそのまま見るための表示ライブラリ。sw.js が保存するのでオフラインでも動く） */
+var SN_PDFJS     = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js";
+var SN_PDFJS_WRK = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
 
 function snEl(id){ return document.getElementById(id); }
 function snEsc(s){
@@ -1418,16 +1469,18 @@ function snDb(){
     catch (e) { rej(e); return; }
     req.onupgradeneeded = function(){
       var db = req.result;
-      if (!db.objectStoreNames.contains(SN_STORE)) db.createObjectStore(SN_STORE, { keyPath: "path" });
+      if (!db.objectStoreNames.contains(SN_STORE))     db.createObjectStore(SN_STORE,     { keyPath: "path" });
+      if (!db.objectStoreNames.contains(SN_PDF_STORE)) db.createObjectStore(SN_PDF_STORE, { keyPath: "file" });
     };
     req.onsuccess = function(){ _snDb = req.result; res(_snDb); };
     req.onerror   = function(){ rej(req.error || new Error("保存領域を開けませんでした")); };
   });
 }
-function snTx(mode, fn){
+function snTx(mode, fn, storeName){
   return snDb().then(function(db){
     return new Promise(function(res, rej){
-      var t = db.transaction(SN_STORE, mode), st = t.objectStore(SN_STORE), out = fn(st);
+      var name = storeName || SN_STORE;
+      var t = db.transaction(name, mode), st = t.objectStore(name), out = fn(st);
       t.oncomplete = function(){
         if (out && out.__req) { var v = out.__req.result; res(v === undefined ? null : v); }
         else res(out);
@@ -1445,6 +1498,187 @@ function snPutMany(entries){
     for (var i = 0; i < entries.length; i++) st.put(entries[i]);
     return entries.length;
   });
+}
+
+/* =========================================================================
+   PDFそのものの持ち込み
+   PCにあるPDFをiCloud経由でこの端末に取り込み、IndexedDB に置く。
+   公開サイトにPDFは一切置かない（教科書の再配布になるため）。
+   ========================================================================= */
+var SN_PDF_SET = null;   // 取り込み済みのファイル名の集合（表示の出し分け用）
+
+function snPdfPut(rec){ return snTx("readwrite", function(st){ st.put(rec); return rec; }, SN_PDF_STORE); }
+function snPdfGet(file){ return snTx("readonly", function(st){ return { __req: st.get(file) }; }, SN_PDF_STORE); }
+function snPdfDel(file){ return snTx("readwrite", function(st){ st.delete(file); return true; }, SN_PDF_STORE); }
+function snPdfAll(){ return snTx("readonly", function(st){ return { __req: st.getAll() }; }, SN_PDF_STORE); }
+function snPdfClear(){ return snTx("readwrite", function(st){ st.clear(); return true; }, SN_PDF_STORE); }
+
+/** 取り込み済み一覧を読み直す（中身のPDFは読まず、名前と大きさだけ） */
+function snRefreshPdfSet(){
+  return snPdfAll().then(function(list){
+    SN_PDF_SET = {};
+    (list || []).forEach(function(r){ SN_PDF_SET[r.file] = r.size || 0; });
+    return list || [];
+  }).catch(function(){ SN_PDF_SET = {}; return []; });
+}
+function snHasPdf(file){ return !!(SN_PDF_SET && SN_PDF_SET[file] !== undefined); }
+
+/** 目録に載っているファイル名か（載っていないPDFは取り込んでも使い道がない） */
+function snKnownPdfName(name){
+  var books = (window.DB_META && window.DB_META.books) || [];
+  for (var i = 0; i < books.length; i++) if (books[i].file === name) return true;
+  return false;
+}
+
+/** PDFかどうかを名前で判断する（純粋な関数。selfTest対象） */
+function snIsPdfName(name){ return /\.pdf$/i.test(String(name || "")); }
+
+/**
+ * 選ばれたPDFを取り込む。
+ * 戻り値 {added, skipped:[名前], notPdf:[名前], unknown:[名前], failed:[名前]}
+ * skipped は見送った全部（表示用）。内訳は notPdf / unknown / failed に分けて持つ。
+ */
+function snImportPdfs(files, onProgress){
+  var list = Array.prototype.slice.call(files || []);
+  var added = 0, notPdf = [], unknown = [], failed = [], i = 0;
+  function step(){
+    if (i >= list.length) {
+      return Promise.resolve({
+        added: added,
+        skipped: notPdf.concat(unknown).concat(failed),
+        notPdf: notPdf, unknown: unknown, failed: failed
+      });
+    }
+    var f = list[i++];
+    if (onProgress) onProgress(i, list.length, f.name);
+    if (!snIsPdfName(f.name)) { notPdf.push(f.name); return step(); }
+    if (!snKnownPdfName(f.name)) { unknown.push(f.name); return step(); }
+    return snPdfPut({ file: f.name, blob: f, size: f.size, importedAt: new Date().toISOString() })
+      .then(function(){ added++; return step(); })
+      .catch(function(){ failed.push(f.name); return step(); });
+  }
+  return step().then(function(r){ return snRefreshPdfSet().then(function(){ return r; }); });
+}
+
+/** 資料一覧などが作る file:// リンクから、資料名とページ番号を取り出す（純粋な関数。selfTest対象） */
+function snParseLocalHref(href){
+  var s = String(href || "");
+  var m = /#page=(\d+)\s*$/.exec(s);
+  var page = m ? parseInt(m[1], 10) : 1;
+  var base = s.replace(/#page=\d+\s*$/, "");
+  var last = base.split("/").pop() || "";
+  var file;
+  try { file = decodeURIComponent(last); } catch (e) { file = last; }
+  return { file: file, page: (page > 0 ? page : 1) };
+}
+
+/* ---------- PDF.js の読み込み（使うときに初めて読む） ---------- */
+var _snPdfjs = null;
+function snLoadPdfjs(){
+  if (_snPdfjs) return _snPdfjs;
+  _snPdfjs = new Promise(function(res, rej){
+    if (window.pdfjsLib) { res(window.pdfjsLib); return; }
+    var s = document.createElement("script");
+    s.src = SN_PDFJS;
+    s.onload = function(){
+      if (!window.pdfjsLib) { rej(new Error("表示ライブラリを読み込めませんでした")); return; }
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = SN_PDFJS_WRK;
+      res(window.pdfjsLib);
+    };
+    s.onerror = function(){ rej(new Error("表示ライブラリを取得できませんでした（通信を確認してください）")); };
+    document.head.appendChild(s);
+  });
+  return _snPdfjs;
+}
+
+/* ---------- PDFビューア ---------- */
+var SN_VIEW = { doc: null, page: 1, total: 0, scale: 1, base: 1, file: "", rendering: false };
+
+function snOpenPdf(file, page){
+  var ov = snEl("pdfView");
+  if (!ov) return;
+  ov.classList.add("on");
+  snEl("pvTitle").textContent = file;
+  snEl("pvMsg").textContent = "PDFを開いています…";
+  snEl("pvMsg").style.display = "";
+  SN_VIEW.file = file;
+
+  Promise.all([snLoadPdfjs(), snPdfGet(file)]).then(function(a){
+    var lib = a[0], rec = a[1];
+    if (!rec || !rec.blob) throw new Error("この資料のPDFはまだ取り込まれていません");
+    return rec.blob.arrayBuffer().then(function(buf){
+      return lib.getDocument({ data: buf }).promise;
+    });
+  }).then(function(doc){
+    SN_VIEW.doc = doc;
+    SN_VIEW.total = doc.numPages;
+    SN_VIEW.scale = 0;                       // 0 のうちは幅に合わせて自動決定
+    SN_VIEW.page = Math.min(Math.max(1, page || 1), doc.numPages);
+    snEl("pvMsg").style.display = "none";
+    return snRenderPdfPage();
+  }).catch(function(e){
+    var name = (e && e.name) || "";
+    var m;
+    if (name === "PasswordException") {
+      m = "このPDFはパスワードで保護されているため開けません。";
+    } else if (name === "InvalidPDFException") {
+      m = "PDFとして読めませんでした（ファイルが壊れている可能性があります）。";
+    } else {
+      m = "開けませんでした：" + (e && e.message ? e.message : String(e));
+    }
+    snEl("pvMsg").style.display = "";
+    snEl("pvMsg").textContent = m;
+  });
+}
+
+function snRenderPdfPage(){
+  var doc = SN_VIEW.doc;
+  if (!doc || SN_VIEW.rendering) return Promise.resolve();
+  SN_VIEW.rendering = true;
+  return doc.getPage(SN_VIEW.page).then(function(pg){
+    var wrap = snEl("pvCanvasWrap");
+    var v1 = pg.getViewport({ scale: 1 });
+    if (!SN_VIEW.scale) {
+      SN_VIEW.base = Math.max(0.2, (wrap.clientWidth - 8) / v1.width);
+      SN_VIEW.scale = SN_VIEW.base;
+    }
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var vp = pg.getViewport({ scale: SN_VIEW.scale });
+    var cv = snEl("pvCanvas"), ctx = cv.getContext("2d");
+    cv.width = Math.floor(vp.width * dpr);
+    cv.height = Math.floor(vp.height * dpr);
+    cv.style.width = Math.floor(vp.width) + "px";
+    cv.style.height = Math.floor(vp.height) + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return pg.render({ canvasContext: ctx, viewport: vp }).promise;
+  }).then(function(){
+    snEl("pvPage").textContent = SN_VIEW.page + " / " + SN_VIEW.total;
+    snEl("pvCanvasWrap").scrollTop = 0;
+    SN_VIEW.rendering = false;
+  }).catch(function(e){
+    SN_VIEW.rendering = false;
+    snEl("pvMsg").style.display = "";
+    snEl("pvMsg").textContent = "ページを描けませんでした：" + (e && e.message ? e.message : String(e));
+  });
+}
+
+function snPdfGo(delta){
+  if (!SN_VIEW.doc) return;
+  var n = SN_VIEW.page + delta;
+  if (n < 1 || n > SN_VIEW.total) return;
+  SN_VIEW.page = n;
+  snRenderPdfPage();
+}
+function snPdfZoom(mul){
+  if (!SN_VIEW.doc) return;
+  SN_VIEW.scale = Math.min(SN_VIEW.base * 4, Math.max(SN_VIEW.base * 0.5, SN_VIEW.scale * mul));
+  snRenderPdfPage();
+}
+function snClosePdf(){
+  var ov = snEl("pdfView");
+  if (ov) ov.classList.remove("on");
+  if (SN_VIEW.doc && SN_VIEW.doc.destroy) { try { SN_VIEW.doc.destroy(); } catch (e) {} }
+  SN_VIEW.doc = null;
 }
 
 /* ---------- 取り込み ---------- */
@@ -1572,6 +1806,7 @@ function snBoot(){
   if (hasData) {
     try { sessionStorage.removeItem(SN_RELOAD_FLAG); } catch (e) {}
     snRenderDataInfo();
+    if (!isLocal) { snRefreshPdfSet().then(snRenderPdfBox); }
     return;
   }
   if (isLocal) {
@@ -1636,15 +1871,115 @@ function snRenderDataInfo(){
   });
 }
 
-/* ---------- PDFを開くリンク（スマホでは開けないので案内する） ---------- */
+/* ---------- PDFを開くリンクを内蔵ビューアにつなぐ ---------- */
 function snGuardLocalLinks(){
-  if (location.protocol === "file:") return;
+  if (location.protocol === "file:") return;   // PCでは従来どおりPDFが直接開く
   document.addEventListener("click", function(ev){
     var a = ev.target && ev.target.closest ? ev.target.closest('a[href^="file:"]') : null;
     if (!a) return;
     ev.preventDefault();
-    if (typeof toast === "function") toast("PDFそのものはPCの中にあるため、この端末では開けません");
+    ev.stopPropagation();
+    var t = snParseLocalHref(a.getAttribute("href") || a.href);
+    if (snHasPdf(t.file)) {
+      snOpenPdf(t.file, t.page);
+    } else if (typeof toast === "function") {
+      toast("「" + t.file + "」はまだ取り込まれていません（情報タブから取り込めます）");
+    }
   }, true);
+}
+
+function snBindViewer(){
+  var b = function(id, fn){ var e = snEl(id); if (e) e.onclick = fn; };
+  b("pvClose",   snClosePdf);
+  b("pvPrev",    function(){ snPdfGo(-1); });
+  b("pvNext",    function(){ snPdfGo(1); });
+  b("pvZoomIn",  function(){ snPdfZoom(1.25); });
+  b("pvZoomOut", function(){ snPdfZoom(1 / 1.25); });
+  document.addEventListener("keydown", function(e){
+    if (!snEl("pdfView") || !snEl("pdfView").classList.contains("on")) return;
+    if (e.key === "Escape") snClosePdf();
+    else if (e.key === "ArrowRight" || e.key === "PageDown") snPdfGo(1);
+    else if (e.key === "ArrowLeft"  || e.key === "PageUp")   snPdfGo(-1);
+  });
+}
+
+/* ---------- 情報タブ：PDFの取り込み ---------- */
+function snRenderPdfBox(){
+  var host = document.getElementById("tab-info");
+  if (!host || document.getElementById("snPdfBox")) return;
+  var box = document.createElement("section");
+  box.id = "snPdfBox";
+  box.style.cssText = "margin-top:18px";
+  box.innerHTML =
+    '<h2 class="fieldhead">PDF本体</h2>' +
+    '<p class="datanote">検索結果から実際のPDFを開けるようにするには、PCから持ってきたPDFをこの端末に取り込みます。' +
+    'ファイル名が目録と一致するものだけを受け付けます。</p>' +
+    '<p class="datanote">まとめて選ぶときは、ファイル画面の右上「…」→<b>「選択」</b>を押してから複数タップし、' +
+    '「開く」を押します。雲マークが付いているファイルは、先にタップしてダウンロードしてください。</p>' +
+    '<div id="snPdfMsg" class="datanote">確認中…</div>' +
+    '<div style="margin-top:8px">' +
+      '<button class="gbtn sub" style="width:auto;padding:8px 14px;min-height:0" id="snPdfPick">PDFを取り込む（複数選べます）</button> ' +
+      '<button class="gbtn sub" style="width:auto;padding:8px 14px;min-height:0" id="snPdfWipe">取り込んだPDFを全部消す</button>' +
+    '</div>' +
+    // accept を付けると iOS のファイル選択でPDFが薄く表示されて選べないことがあるため、
+    // 種類の指定はせず、選ばれたあとに拡張子とファイル名で選り分ける。
+    '<input type="file" id="snPdfFile" multiple style="display:none">' +
+    '<div id="snPdfList" style="margin-top:10px"></div>';
+  host.appendChild(box);
+
+  snEl("snPdfPick").onclick = function(){ var i = snEl("snPdfFile"); i.value = ""; i.click(); };
+  snEl("snPdfWipe").onclick = function(){
+    if (!confirm("取り込んだPDFをすべて消します。資料データ（検索用の本文）は消えません。よろしいですか？")) return;
+    snPdfClear().then(snRefreshPdfSet).then(snRenderPdfList);
+  };
+  snEl("snPdfFile").onchange = function(){
+    var files = this.files;
+    this.value = "";
+    if (!files || !files.length) return;
+    var msg = snEl("snPdfMsg");
+    msg.textContent = "取り込んでいます…";
+    snImportPdfs(files, function(i, n, name){
+      msg.textContent = "取り込んでいます… " + i + " / " + n + "　" + name;
+    }).then(function(r){
+      var parts = [r.added + " 件を取り込みました。"];
+      function few(a){ return a.slice(0, 4).join("、") + (a.length > 4 ? " ほか" + (a.length - 4) + "件" : ""); }
+      if (r.unknown.length) parts.push("目録に無いため見送り（" + r.unknown.length + "件）: " + few(r.unknown));
+      if (r.notPdf.length)  parts.push("PDFではないため見送り（" + r.notPdf.length + "件）: " + few(r.notPdf));
+      if (r.failed.length)  parts.push("保存できませんでした（" + r.failed.length + "件）: " + few(r.failed));
+      msg.innerHTML = parts.map(snEsc).join("<br>");
+      snRenderPdfList();
+    }).catch(function(e){
+      msg.textContent = "取り込めませんでした：" + (e && e.message ? e.message : String(e));
+    });
+  };
+  snRenderPdfList();
+}
+
+function snRenderPdfList(){
+  var list = snEl("snPdfList"), msg = snEl("snPdfMsg");
+  if (!list) return;
+  snPdfAll().then(function(recs){
+    recs = recs || [];
+    var total = recs.reduce(function(s, r){ return s + (r.size || 0); }, 0);
+    if (msg) msg.textContent = recs.length
+      ? "取り込み済み：" + recs.length + " 件（合計 " + (total / 1024 / 1024).toFixed(1) + " MB）"
+      : "まだPDFは取り込まれていません。";
+    recs.sort(function(a, b){ return String(a.file).localeCompare(String(b.file), "ja"); });
+    list.innerHTML = recs.map(function(r){
+      return '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed #e3e5e8">' +
+        '<span style="flex:1 1 auto;min-width:0;font-size:.85rem;overflow-wrap:anywhere">' + snEsc(r.file) + '</span>' +
+        '<span class="datanote" style="white-space:nowrap;margin:0">' + ((r.size || 0) / 1024 / 1024).toFixed(1) + ' MB</span>' +
+        '<button class="gbtn sub" style="width:auto;padding:4px 10px;min-height:0;font-size:.78rem" data-pdfdel="' + snEsc(r.file) + '">削除</button>' +
+      '</div>';
+    }).join("");
+    Array.prototype.forEach.call(list.querySelectorAll("[data-pdfdel]"), function(b){
+      b.onclick = function(){
+        snPdfDel(b.getAttribute("data-pdfdel")).then(snRefreshPdfSet).then(snRenderPdfList);
+      };
+    });
+  }).catch(function(e){
+    if (msg) msg.textContent = "PDFの保存領域を確認できません：" + (e && e.message ? e.message : String(e));
+  });
 }
 
 /* ---------- オフライン用の準備 ---------- */
@@ -1684,6 +2019,37 @@ function snSelfTest(){
   t("スマホ: 壊れた入力を弾く",
     snValidateBundle(null) !== null && snValidateBundle("abc") !== null);
 
+  /* PDF本体まわり */
+  t("PDF: ビューアの部品がそろっている",
+    !!(snEl("pdfView") && snEl("pvCanvas") && snEl("pvPrev") && snEl("pvNext") && snEl("pvPage")));
+  t("PDF: リンクから資料名とページを取り出せる", (function(){
+      var r = snParseLocalHref("file:///C:/a/b/" + encodeURIComponent("解析力学 9256.pdf") + "#page=42");
+      return r.file === "解析力学 9256.pdf" && r.page === 42;
+    })());
+  t("PDF: ページ指定が無ければ1ページ目", (function(){
+      var r = snParseLocalHref("file:///C:/a/" + encodeURIComponent("確率.pdf"));
+      return r.file === "確率.pdf" && r.page === 1;
+    })());
+  t("PDF: 日本語の混じる長い名前も扱える", (function(){
+      var n = "2026-08-12_オイラー・ラグランジュ方程式.pdf";
+      var r = snParseLocalHref("file:///C:/x/" + encodeURIComponent(n) + "#page=7");
+      return r.file === n && r.page === 7;
+    })());
+  t("PDF: 目録にある名前だけ受け付ける", (function(){
+      var books = (window.DB_META && window.DB_META.books) || [];
+      if (!books.length) return snKnownPdfName("存在しない.pdf") === false;
+      return snKnownPdfName(books[0].file) === true && snKnownPdfName("存在しない.pdf") === false;
+    })());
+  t("PDF: 名前でPDFかどうかを見分ける",
+    snIsPdfName("a.pdf") && snIsPdfName("大文字.PDF") && !snIsPdfName("a.txt") && !snIsPdfName("pdf") && !snIsPdfName(""));
+  t("PDF: 選択欄に種類の制限をかけていない", (function(){
+      var i = snEl("snPdfFile");
+      return !i || !i.getAttribute("accept");   // iOSで選べなくなるため付けない
+    })());
+  t("PDF: 保存領域の関数がある",
+    typeof snPdfPut === "function" && typeof snPdfGet === "function" &&
+    typeof snPdfDel === "function" && typeof snOpenPdf === "function");
+
   // 本体の selfTest は非同期で後から表示欄を書き換えるため、こちらは専用の欄に出す
   var host = document.getElementById("selftest-mobile");
   if (host) {
@@ -1700,6 +2066,7 @@ function snSelfTest(){
 
 /* ---------- 起動 ---------- */
 snGuardLocalLinks();
+snBindViewer();
 snRegisterServiceWorker();
 snBoot();
 snSelfTest();
@@ -1708,6 +2075,15 @@ window.snIsStandalone = snIsStandalone;
 window.snCount = snCount;
 window.snClear = snClear;
 window.snGateOpen = snGateOpen;
+window.snImportPdfs = snImportPdfs;
+window.snParseLocalHref = snParseLocalHref;
+window.snOpenPdf = snOpenPdf;
+window.snClosePdf = snClosePdf;
+window.snPdfAll = snPdfAll;
+window.snPdfGet = snPdfGet;
+window.snHasPdf = snHasPdf;
+window.snRefreshPdfSet = snRefreshPdfSet;
+window.SN_VIEW = SN_VIEW;
 </script>
 </body>
 </html>

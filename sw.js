@@ -10,7 +10,7 @@
  *
  * アプリを更新したら CACHE の数字を1つ増やすこと。
  */
-var CACHE = "shiryo-navi-v1";
+var CACHE = "shiryo-navi-v3";
 var SHELL = "./index.html";
 var ASSETS = [
   "./",
@@ -20,10 +20,13 @@ var ASSETS = [
   "./icon-192.png",
   "./icon-512.png"
 ];
-// 数式表示に使う外部ライブラリ（ここだけは別ドメインでもキャッシュする）
+// 外部ライブラリ（ここだけは別ドメインでもキャッシュする）
+// KaTeX＝数式表示、pdf.js＝取り込んだPDFの表示。どちらもオフラインで必要になる。
 var KATEX = [
   "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css",
-  "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+  "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js",
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"
 ];
 
 var SN_DB = "shiryo-navi", SN_STORE = "files";
@@ -46,19 +49,20 @@ self.addEventListener("activate", function (e) {
 });
 
 /* ---------- 取り込み済み資料データの読み出し ---------- */
+/*
+ * バージョンを指定せずに開く。こうしないと、アプリ側でDBの構成を変えたとき
+ * （PDF置き場の追加など）にバージョン違いで開けなくなる。
+ */
 function snOpenDb() {
   return new Promise(function (res, rej) {
-    var req = indexedDB.open(SN_DB, 1);
-    req.onupgradeneeded = function () {
-      var db = req.result;
-      if (!db.objectStoreNames.contains(SN_STORE)) db.createObjectStore(SN_STORE, { keyPath: "path" });
-    };
+    var req = indexedDB.open(SN_DB);
     req.onsuccess = function () { res(req.result); };
     req.onerror = function () { rej(req.error); };
   });
 }
 function snGetFile(path) {
   return snOpenDb().then(function (db) {
+    if (!db.objectStoreNames.contains(SN_STORE)) return null;   // まだ取り込み前
     return new Promise(function (res, rej) {
       var t = db.transaction(SN_STORE, "readonly");
       var r = t.objectStore(SN_STORE).get(path);
